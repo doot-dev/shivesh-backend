@@ -6,8 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "pm2:start": "pm2 start ecosystem.config.js --env production",
-    "pm2:start:dev": "pm2 start ecosystem.config.js --env development",
+    "pm2:start": "pm2 start ecosystem.config.cjs --env production",
+    "pm2:start:dev": "pm2 start ecosystem.config.cjs --env development",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
