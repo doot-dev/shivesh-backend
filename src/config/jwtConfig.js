@@ -12,7 +12,7 @@ const { sign, verify } = jsonwebtoken;
 export async function verifyToken(req, res, next) {
   try {
     const token =
-      req.body.token || req.headers["authorization"] || req.query.token;
+      req.body?.token || req.headers["authorization"] || req.query?.token;
 
     // check if token is provided
     if (!token) {
@@ -23,11 +23,10 @@ export async function verifyToken(req, res, next) {
       });
       return;
     }
-    console.log(token);
     
     // decrypt the token  
     const _decryptToken = decrypt(token);
-
+    
     // verify the token
     verify(_decryptToken, process.env.JWT_TOKEN, (err, decoded) => {
 
@@ -38,7 +37,7 @@ export async function verifyToken(req, res, next) {
       console.log("decoded", decoded);
 
       // Attach the decoded user information to the request object
-      req.user = decoded.data;
+      req.user = decoded;
       next();
     });
   } catch (error) {

@@ -106,7 +106,7 @@ export async function updateUser(req, res) {
  */
 export async function getUser(req, res) {
     try {
-        const { id } = req.params;
+        const { userId:id } = req.user;
 
         const user = await db.user.findUnique({
             where: { id: parseInt(id) },
