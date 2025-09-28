@@ -11,17 +11,15 @@ const { sign, verify } = jsonwebtoken;
  */
 export async function verifyToken(req, res, next) {
   try {
-    const token =
-      req.body?.token || req.headers["authorization"] || req.query?.token;
+    const token = req.body?.token || req.headers["authorization"]?.replace('Bearer ', '') || req.query?.token;
 
     // check if token is provided
     if (!token) {
-      res.status(403).send({
+      return res.status(403).json({
         message: "A Token is Required for Authentication",
         success: false,
         data: {},
       });
-      return;
     }
     
     // decrypt the token  
@@ -54,19 +52,24 @@ export async function verifyToken(req, res, next) {
 /**
  * Generate JWT auth token function
  * @param {object} data data to be inserted into the token
- * @returns {Promise<string>} encrypted token
+ * @returns {string} encrypted token
  */
-export async function generateToken(data) {
-  // add the issued at time to the data
-  data.iat = Date.now();
-
-  // sign the data with the JWT token
-  const token = sign({ data }, process.env.JWT_TOKEN || "", {
-    expiresIn: "30d",
-  });
-
-  // encrypt the token
-  return encrypt(token);
+export function generateToken(data) {
+  try {
+    // add the issued at time to the data
+    data.iat = Date.now();
+    
+    // sign the data with the JWT token
+    const token = sign({ data }, process.env.JWT_TOKEN || "", {
+      expiresIn: "30d",
+    });
+    
+    // encrypt the token
+    return encrypt(token);
+  } catch (error) {
+    console.error("Token generation error:", error.message);
+    throw new Error(`Failed to generate token: ${error.message}`);
+  }
 }
 
 

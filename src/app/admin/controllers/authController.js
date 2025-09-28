@@ -12,6 +12,8 @@ import { generateToken } from "../../../config/jwtConfig.js";
  */
 export async function login(req, res) {
     try {
+        console.log("Login request body:", req.body);
+        
         const { err, status } = await validatorFunction(req.body, loginValidation);
         if (!status) {
             return res.status(422).json({ message: "Validation Error", errors: err });
@@ -27,8 +29,7 @@ export async function login(req, res) {
         if (!userData) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
-        console.log(userData);
-        
+
         if (!userData.status) {
             return res.status(403).json({ success: false, message: "User is inactive", data: null });
         }
@@ -37,16 +38,15 @@ export async function login(req, res) {
         if (!isPasswordValid) {
             return res.status(401).json({ success: false, message: "Invalid password", data: null });
         }
+        const payload = { id: userData.id, userName: userData.userName, role: userData.role, employeeId: userData.employeeId };
 
         // Generate JWT token
-        const token = await generateToken({ id: userData.id, userName: userData.userName, role: userData.role, employeeId: userData.employeeId });
-
-        const tokenEncrypted = encrypt(token);
+        const token = generateToken(payload);
 
         return res.status(200).json({
             success: true, message: "User logged in successfully", data: {
                 userName: userData.userName, role: userData.role, id: userData.id, employeeId: userData.employeeId, name: userData.name
-                , token: tokenEncrypted
+                , token: token
             }
         });
     } catch (error) {
