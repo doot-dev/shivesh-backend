@@ -21,7 +21,8 @@ export async function createUser(req, res) {
                 OR: [
                     { userName: userName },
                     { employeeId: employeeId }
-                ]
+                ],
+                AND: { isDeleted: false}
             }
         });
 
@@ -60,12 +61,12 @@ export async function createUser(req, res) {
  */
 export async function updateUser(req, res) {
     try {
-        const { err, status } = await validatorFunction(req.body, userUpdateValidation);
-        if (!status) {
+        const { err, status:validationStatus } = await validatorFunction(req.body, userUpdateValidation);
+        if (!validationStatus) {
             return res.status(422).json({ message: "Validation Error", errors: err });
         }
 
-        const { id, name, employeeId, userName, password, role, menuAccess } = req.body;
+        const { id, name, employeeId, userName, role, menuAccess , status} = req.body;
 
         const existingUser = await db.user.findUnique({
             where: { id: parseInt(id) }
@@ -80,11 +81,31 @@ export async function updateUser(req, res) {
             employeeId,
             userName,
             role,
-            menuAccess
+            menuAccess,
+            status: status == "true" || status == true? true : false
         };
 
-        if (password) {
-            updateData.password = encrypt(password);
+        // Check if userName or employeeId already exists for a different user
+        const duplicateUser = await db.user.findFirst({
+            where: {
+                OR: [
+                    { userName: userName },
+                    { employeeId: employeeId }
+                ],
+                AND: [
+                    { isDeleted: false },
+                    { id: { not: parseInt(id) } }
+                ]
+            }
+        });
+
+        if (duplicateUser) {
+            const duplicateField = duplicateUser.userName === userName ? "Username" : "Employee ID";
+            return res.status(409).json({ 
+                success: false, 
+                message: `${duplicateField} already exists`, 
+                data: null 
+            });
         }
 
         const updatedUser = await db.user.update({
@@ -106,7 +127,7 @@ export async function updateUser(req, res) {
  */
 export async function getUser(req, res) {
     try {
-        const { userId:id } = req.user;
+        const { id } = req.query;
 
         const user = await db.user.findUnique({
             where: { id: parseInt(id) },
@@ -171,8 +192,9 @@ export async function deleteUser(req, res) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
 
-        await db.user.delete({
-            where: { id: parseInt(id) }
+        await db.user.update({
+            where: { id: parseInt(id) },
+            data: { isDeleted: true }
         });
 
         return res.status(200).json({ success: true, message: "User deleted successfully", data: null });
@@ -180,3 +202,26 @@ export async function deleteUser(req, res) {
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
+
+
+export async function deleteUserFromTable(req, res) {
+    try {
+        const { id } = req.query;
+
+        const existingUser = await db.user.findUnique({
+            where: { id: parseInt(id) }
+        });
+
+        if (!existingUser) {
+            return res.status(404).json({ success: false, message: "User not found", data: null });
+        }
+
+        await db.user.delete({
+            where: { id: parseInt(id) },
+        });
+
+        return res.status(200).json({ success: true, message: "User deleted successfully", data: null });
+    } catch (error) {
+        return res.status(400).json({ success: false, message: error.message, data: null });
+    }
+} 

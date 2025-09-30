@@ -12,6 +12,7 @@ userData
   .get('/', verifyToken, userController.getUser)
   .put('/', verifyToken, userController.updateUser)
   .delete('/', verifyToken, userController.deleteUser)
+  .delete("/hard", verifyToken, userController.deleteUserFromTable)
 
 
 export default userData;

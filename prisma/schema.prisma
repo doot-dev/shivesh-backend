@@ -20,13 +20,14 @@ datasource db {
 model User {
   id          Int       @id @default(autoincrement())
   name        String
-  employeeId  String    @unique
-  userName    String    @unique
+  employeeId  String    
+  userName    String    
   password    String
   role        UserRole
   status      Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  isDeleted   Boolean   @default(false)
   lastLoginAt DateTime?
   menuAccess  Json      @default("[]") // JSON array of accessible menu items
 }
