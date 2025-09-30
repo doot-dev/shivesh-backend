@@ -13,6 +13,7 @@ userData
   .put('/', verifyToken, userController.updateUser)
   .delete('/', verifyToken, userController.deleteUser)
   .delete("/hard", verifyToken, userController.deleteUserFromTable)
+  .put("/reset-password", verifyToken, userController.resetPassword);
 
 
 export default userData;

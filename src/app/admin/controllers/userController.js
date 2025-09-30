@@ -1,7 +1,7 @@
 import { validatorFunction } from "../../../helper/validate.js";
-import { userUpdateValidation, userValidation } from "../validations/userValidation.js";
+import { resetPasswordValidation, userUpdateValidation, userValidation } from "../validations/userValidation.js";
 import db from "../../../config/database.js";
-import { encrypt } from "../../../helper/security.js";
+import { decrypt, encrypt } from "../../../helper/security.js";
 
 /**
  * Creates a new user in the system
@@ -22,16 +22,16 @@ export async function createUser(req, res) {
                     { userName: userName },
                     { employeeId: employeeId }
                 ],
-                AND: { isDeleted: false}
+                AND: { isDeleted: false }
             }
         });
 
         if (existingUser) {
             const duplicateField = existingUser.userName === userName ? "Username" : "Employee ID";
-            return res.status(409).json({ 
-                success: false, 
-                message: `${duplicateField} already exists`, 
-                data: null 
+            return res.status(409).json({
+                success: false,
+                message: `${duplicateField} already exists`,
+                data: null
             });
         }
         const hashedPassword = encrypt(password);
@@ -61,12 +61,12 @@ export async function createUser(req, res) {
  */
 export async function updateUser(req, res) {
     try {
-        const { err, status:validationStatus } = await validatorFunction(req.body, userUpdateValidation);
+        const { err, status: validationStatus } = await validatorFunction(req.body, userUpdateValidation);
         if (!validationStatus) {
             return res.status(422).json({ message: "Validation Error", errors: err });
         }
 
-        const { id, name, employeeId, userName, role, menuAccess , status} = req.body;
+        const { id, name, employeeId, userName, role, menuAccess, status } = req.body;
 
         const existingUser = await db.user.findUnique({
             where: { id: parseInt(id) }
@@ -82,7 +82,7 @@ export async function updateUser(req, res) {
             userName,
             role,
             menuAccess,
-            status: status == "true" || status == true? true : false
+            status: status == "true" || status == true ? true : false
         };
 
         // Check if userName or employeeId already exists for a different user
@@ -101,10 +101,10 @@ export async function updateUser(req, res) {
 
         if (duplicateUser) {
             const duplicateField = duplicateUser.userName === userName ? "Username" : "Employee ID";
-            return res.status(409).json({ 
-                success: false, 
-                message: `${duplicateField} already exists`, 
-                data: null 
+            return res.status(409).json({
+                success: false,
+                message: `${duplicateField} already exists`,
+                data: null
             });
         }
 
@@ -182,6 +182,9 @@ export async function getAllUsers(req, res) {
  */
 export async function deleteUser(req, res) {
     try {
+        if (!req.query?.id) {
+            return res.status(400).json({ success: false, message: "User ID is required", data: null });
+        }
         const { id } = req.query;
 
         const existingUser = await db.user.findUnique({
@@ -206,6 +209,9 @@ export async function deleteUser(req, res) {
 
 export async function deleteUserFromTable(req, res) {
     try {
+        if (!req.query?.id) {
+            return res.status(400).json({ success: false, message: "User ID is required", data: null });
+        }
         const { id } = req.query;
 
         const existingUser = await db.user.findUnique({
@@ -224,4 +230,39 @@ export async function deleteUserFromTable(req, res) {
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
-} 
+}
+
+
+export async function resetPassword(req, res) {
+    try {
+       const { err, status: validationStatus } = await validatorFunction(req.body, resetPasswordValidation);
+        if (!validationStatus) {
+            return res.status(422).json({ message: "Validation Error", errors: err });
+        }
+
+        const { id, oldPassword, newPassword } = req.body;
+
+        const user = await db.user.findUnique({
+            where: { id: parseInt(id) }
+        });
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found", data: null });
+        }
+        const oldPasswordChecking = decrypt(user.password);
+        if (oldPasswordChecking !== oldPassword) {
+            return res.status(400).json({ success: false, message: "Old password does not match", data: null });
+        }
+        const hashedNewPassword = encrypt(newPassword);
+        await db.user.update({
+            where: { id: parseInt(id) },
+            data: { password: hashedNewPassword }
+        });
+
+        return res.status(200).json({ success: true, message: "Password reset successfully", data: null });
+
+    } catch (error) {
+
+        return res.status(500).json({ success: false, message: "Something went wrong", data: null, error: error });
+    }
+}

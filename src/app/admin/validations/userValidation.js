@@ -16,3 +16,11 @@ export const userUpdateValidation = {
     menuAccess: "required",
     status: 'required|boolean'
 }
+
+
+
+export const resetPasswordValidation = { 
+    id: 'required|integer',
+    oldPassword: 'required',
+    newPassword: 'required'
+}
