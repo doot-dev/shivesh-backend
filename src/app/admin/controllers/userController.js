@@ -136,7 +136,7 @@ export async function getUser(req, res) {
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
-
+        user.password = decrypt(user.password);
         return res.status(200).json({ success: true, message: "User retrieved successfully", data: user });
     } catch (error) {
         return res.status(400).json({ success: false, message: error.message, data: null });
@@ -233,9 +233,15 @@ export async function deleteUserFromTable(req, res) {
 }
 
 
+/**
+ * Resets the password of a user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response with success status and message
+ */
 export async function resetPassword(req, res) {
     try {
-       const { err, status: validationStatus } = await validatorFunction(req.body, resetPasswordValidation);
+        const { err, status: validationStatus } = await validatorFunction(req.body, resetPasswordValidation);
         if (!validationStatus) {
             return res.status(422).json({ message: "Validation Error", errors: err });
         }
@@ -245,7 +251,6 @@ export async function resetPassword(req, res) {
         const user = await db.user.findUnique({
             where: { id: parseInt(id) }
         });
-        
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
