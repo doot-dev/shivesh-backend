@@ -15,5 +15,4 @@ userData
   .delete("/hard", verifyToken, userController.deleteUserFromTable)
   .put("/reset-password", verifyToken, userController.resetPassword);
 
-
 export default userData;

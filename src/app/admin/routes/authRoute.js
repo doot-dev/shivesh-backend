@@ -7,6 +7,7 @@ const authRoute = Router();
 
 authRoute
   .post('/', authController.login)
+  .post("/forget-password", authController.forgetPassword);
 
 
 

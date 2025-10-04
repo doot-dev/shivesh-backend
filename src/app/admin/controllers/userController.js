@@ -69,7 +69,7 @@ export async function updateUser(req, res) {
         const { id, name, employeeId, userName, role, menuAccess, status } = req.body;
 
         const existingUser = await db.user.findUnique({
-            where: { id: parseInt(id) }
+            where: { id: parseInt(id)  , isDeleted: false }
         });
 
         if (!existingUser) {
@@ -130,7 +130,7 @@ export async function getUser(req, res) {
         const { id } = req.query;
 
         const user = await db.user.findUnique({
-            where: { id: parseInt(id) },
+            where: { id: parseInt(id)  , isDeleted: false },
         });
 
         if (!user) {
@@ -152,6 +152,7 @@ export async function getUser(req, res) {
 export async function getAllUsers(req, res) {
     try {
         const users = await db.user.findMany({
+            where: { isDeleted: false },
             select: {
                 id: true,
                 name: true,
@@ -188,7 +189,7 @@ export async function deleteUser(req, res) {
         const { id } = req.query;
 
         const existingUser = await db.user.findUnique({
-            where: { id: parseInt(id) }
+            where: { id: parseInt(id) , isDeleted: false }
         });
 
         if (!existingUser) {

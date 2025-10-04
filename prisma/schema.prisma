@@ -20,8 +20,8 @@ datasource db {
 model User {
   id          Int       @id @default(autoincrement())
   name        String
-  employeeId  String    
-  userName    String    
+  employeeId  String
+  userName    String
   password    String
   role        UserRole
   status      Boolean   @default(true)
@@ -30,6 +30,36 @@ model User {
   isDeleted   Boolean   @default(false)
   lastLoginAt DateTime?
   menuAccess  Json      @default("[]") // JSON array of accessible menu items
+}
+
+model OTP {
+  id        Int      @id @default(autoincrement())
+  mode      MODE
+  finder    String
+  otp       String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Product {
+  id        Int      @id @default(autoincrement())
+  name      String
+  size      Size[]
+  isActive  Boolean  @default(true)
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Size {
+  id          Int      @id @default(autoincrement())
+  name        String
+  subcategory String   @default("")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  Product     Product? @relation(fields: [productId], references: [id])
+  productId   Int?
 }
 
 // // ========================================
@@ -297,6 +327,10 @@ model User {
 // ========================================
 // ENUMS
 // ========================================
+enum MODE {
+  EMAIL
+  SMS
+}
 
 enum UserRole {
   ADMIN
