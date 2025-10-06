@@ -5,7 +5,7 @@ export const createProductValidation = {
 export const updateProductValidation = {
     id: 'required',
     name: 'required',
-    status: 'required',
+    isActive: 'required',
 }
 
 export const deleteProductValidation = {

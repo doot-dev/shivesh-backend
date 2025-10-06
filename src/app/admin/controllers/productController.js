@@ -1,5 +1,5 @@
 import { validatorFunction } from "../../../helper/validate.js";
-import { createProductValidation, createSizeValidation, deleteProductValidation, deleteSizeValidation, getProductByIdValidation, getSizeByIdValidation, updateSizeValidation } from "../validations/productValidation.js";
+import { createProductValidation, createSizeValidation, deleteProductValidation, deleteSizeValidation, getProductByIdValidation, getSizeByIdValidation, updateProductValidation, updateSizeValidation } from "../validations/productValidation.js";
 import db from "../../../config/database.js";
 export async function createProduct(req, res) {
     try {
@@ -25,6 +25,35 @@ export async function createProduct(req, res) {
                 id: data.id, name: data.name, createdAt: data.createdAt, size: data.size
             }
         });
+
+    } catch (error) {
+        return res.status(500).json({ success: false, message: error.message, data: null });
+    }
+}
+
+export async function updateProduct(req, res) {
+    try {
+
+        const { err, status: validationStatus } = await validatorFunction(req.body, updateProductValidation);
+        if (!validationStatus) {
+            return res.status(422).json({ message: "Validation Error", errors: err });
+        }
+
+        const { id, name  , isActive} = req.body;
+
+        const existingProduct = await db.product.findUnique({
+            where: { id: parseInt(id)  , isDeleted: false}
+        });
+        if (!existingProduct) {
+            return res.status(404).json({ success: false, message: "Product not found", data: null });
+        }
+
+        const updatedProduct = await db.product.update({
+            where: { id: parseInt(id) },
+            data: { name , isActive }
+        });
+
+        return res.status(200).json({ success: true, message: "Product updated successfully", data: updatedProduct });
 
     } catch (error) {
         return res.status(500).json({ success: false, message: error.message, data: null });

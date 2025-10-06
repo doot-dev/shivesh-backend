@@ -5,6 +5,7 @@ import { decrypt } from "../../../helper/security.js";
 import { generateToken } from "../../../config/jwtConfig.js";
 import { getEmailVerificationMessage, sendMail } from "../../../helper/mailService.js";
 import { $Enums } from "@prisma/client";
+import logger from "../../../helper/logger.js";
 /**
  * Logs a user into the system
  * @param {Object} req - Express request object
@@ -13,8 +14,6 @@ import { $Enums } from "@prisma/client";
  */
 export async function login(req, res) {
     try {
-        console.log("Login request body:", req.body);
-
         const { err, status } = await validatorFunction(req.body, loginValidation);
         if (!status) {
             return res.status(422).json({ message: "Validation Error", errors: err });
@@ -106,7 +105,7 @@ export async function forgetPassword(req, res) {
             }
         });
     } catch (error) {
-        console.log(error);
+        logger.error('Error sending OTP:', error);
         return res.status(500).json({ success: false, message: "Something went wrong", data: null, error: error.message });
     }
 }

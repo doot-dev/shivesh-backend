@@ -9,6 +9,7 @@ productRoute
     .post('/', productController.createProduct)
     .get("/", productController.GetAllProducts)
     .get("/:id", productController.GetProductById)
+    .put("/", productController.updateProduct)
     .delete("/:id", productController.deleteProduct)
     .delete("/hard/:id" , productController.deleteProductFromTable);
 

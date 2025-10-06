@@ -32,8 +32,6 @@ export async function verifyToken(req, res, next) {
         res.status(401).json({ message: 'Failed to authenticate token.' });
         return;
       }
-      console.log("decoded", decoded);
-
       // Attach the decoded user information to the request object
       req.user = decoded;
       next();
