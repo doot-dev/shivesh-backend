@@ -3,6 +3,7 @@ import userRoute from "./userRoute.js"
 import tokenRoute from "./tokenRoute.js"
 import authRoute from "./authRoute.js"
 import productRoute from "./productRoute.js"
+import vendorRoute from "./vendorRoute.js"
 
 
 
@@ -11,6 +12,7 @@ router.use('/auth', authRoute)
 router.use('/token', tokenRoute)
 router.use('/user', userRoute)
 router.use('/product', productRoute)
+router.use('/vendor', vendorRoute)
 
 
 export default router 

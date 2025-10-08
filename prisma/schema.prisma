@@ -62,6 +62,47 @@ model Size {
   productId   Int?
 }
 
+model Vendor {
+  id          Int              @id @default(autoincrement())
+  companyName String
+  ownerName   String
+  phone       String
+  email       String?
+  address     String           @db.Text
+  gstNumber   String?          @unique
+  panNumber   String?          @unique
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  isDeleted   Boolean          @default(false)
+  locations   VendorLocation[]
+}
+
+model VendorLocation {
+  id        Int             @id @default(autoincrement())
+  vendorId  Int
+  latitude  Decimal         @db.Decimal(10, 7)
+  longitude Decimal         @db.Decimal(10, 7)
+  address   String          @db.Text
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+  isDeleted Boolean         @default(false)
+  Vendor    Vendor          @relation(fields: [vendorId], references: [id])
+  handlers  VendorHandler[]
+}
+
+model VendorHandler {
+  id               Int             @id @default(autoincrement())
+  name             String
+  phone            String
+  email            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  isDeleted        Boolean         @default(false)
+  VendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
+  vendorLocationId Int?
+}
+
 // // ========================================
 // // CLIENT MANAGEMENT MODELS
 // // ========================================
@@ -89,26 +130,6 @@ model Size {
 // // ========================================
 // // PRODUCT & VENDOR MODELS
 // // ========================================
-
-// model Product {
-//   id          Int      @id @default(autoincrement())
-//   name        String
-//   grade       String   // Grade 30-80 m³
-//   category    ProductCategory
-//   description String?  @db.Text
-//   basePrice   Decimal  @db.Decimal(10, 2)
-//   unit        String   @default("m³")
-//   isActive    Boolean  @default(true)
-//   createdAt   DateTime @default(now())
-//   updatedAt   DateTime @updatedAt
-
-//   // Relations
-//   orderItems      OrderItem[]
-//   projectProducts ProjectProduct[]
-//   vendorProducts  VendorProduct[]
-
-//   @@map("products")
-// }
 
 // model Vendor {
 //   id          Int      @id @default(autoincrement())
