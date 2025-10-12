@@ -7,16 +7,23 @@ import { getEmailVerificationMessage, sendMail } from "../../../helper/mailServi
 import { $Enums } from "@prisma/client";
 import logger from "../../../helper/logger.js";
 /**
- * Logs a user into the system
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and user data
+ * Logs a user into the system.
+ * Validates credentials, checks user status, and returns a JWT token on success.
+ *
+ * @function login
+ * @async
+ * @param {Request} req - Express request object containing userName and password in body
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: User data and JWT token on success, null on failure
  */
 export async function login(req, res) {
     try {
         const { err, status } = await validatorFunction(req.body, loginValidation);
         if (!status) {
-            return res.status(422).json({ message: "Validation Error", errors: err });
+            return res.status(422).json({ message: "Validation Error", data: err, success: false });
         }
         const { userName, password } = req.body;
 
@@ -59,9 +66,16 @@ export async function login(req, res) {
 
 /**
  * Sends a one-time password (OTP) to the user's email address for password reset.
- * @param {Object} req - Express request object containing email address in body
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and message
+ * Generates and stores OTP, sends it via email, and returns OTP details in response.
+ *
+ * @function forgetPassword
+ * @async
+ * @param {Request} req - Express request object containing userName in body
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: OTP details on success, null on failure
  */
 export async function forgetPassword(req, res) {
     try {

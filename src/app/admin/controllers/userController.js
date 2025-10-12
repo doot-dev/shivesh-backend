@@ -2,18 +2,26 @@ import { validatorFunction } from "../../../helper/validate.js";
 import { resetPasswordValidation, userUpdateValidation, userValidation } from "../validations/userValidation.js";
 import db from "../../../config/database.js";
 import { decrypt, encrypt } from "../../../helper/security.js";
+import logger from "../../../helper/logger.js";
 
 /**
- * Creates a new user in the system
- * @param {Object} req - Express request object containing user data in body
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and user data
+ * Creates a new user in the system.
+ * Validates input, checks for duplicates, and creates a new user record.
+ *
+ * @function createUser
+ * @async
+ * @param {Request} req - Express request object containing user data in body
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: Created user data on success, null on failure
  */
 export async function createUser(req, res) {
     try {
         const { err, status } = await validatorFunction(req.body, userValidation);
         if (!status) {
-            return res.status(422).json({ message: "Validation Error", errors: err });
+            return res.status(422).json({ success: false, message: "Validation Error", data: err });
         }
         const { name, employeeId, userName, password, role, menuAccess } = req.body;
         const existingUser = await db.user.findFirst({
@@ -49,27 +57,35 @@ export async function createUser(req, res) {
 
         return res.status(200).json({ success: true, message: "User created successfully", data: userData });
     } catch (error) {
+        logger.error('createUser error:', error);
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
 
 /**
- * Updates an existing user in the system
- * @param {Object} req - Express request object containing user data in body
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and updated user data
+ * Updates an existing user in the system.
+ * Validates input, checks for duplicates, and updates user record.
+ *
+ * @function updateUser
+ * @async
+ * @param {Request} req - Express request object containing user data in body
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: Updated user data on success, null on failure
  */
 export async function updateUser(req, res) {
     try {
         const { err, status: validationStatus } = await validatorFunction(req.body, userUpdateValidation);
         if (!validationStatus) {
-            return res.status(422).json({ message: "Validation Error", errors: err });
+            return res.status(422).json({ success: false, message: "Validation Error", data: err });
         }
 
         const { id, name, employeeId, userName, role, menuAccess, status } = req.body;
 
         const existingUser = await db.user.findUnique({
-            where: { id: parseInt(id)  , isDeleted: false }
+            where: { id: parseInt(id), isDeleted: false }
         });
 
         if (!existingUser) {
@@ -115,22 +131,29 @@ export async function updateUser(req, res) {
 
         return res.status(200).json({ success: true, message: "User updated successfully", data: updatedUser });
     } catch (error) {
+        logger.error('updateUser error:', error);
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
 
 /**
- * Retrieves a single user by ID
- * @param {Object} req - Express request object containing user ID in params
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and user data
+ * Retrieves a single user by ID.
+ *
+ * @function getUser
+ * @async
+ * @param {Request} req - Express request object containing user ID in query
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: User data on success, null on failure
  */
 export async function getUser(req, res) {
     try {
         const { id } = req.query;
 
         const user = await db.user.findUnique({
-            where: { id: parseInt(id)  , isDeleted: false },
+            where: { id: parseInt(id), isDeleted: false },
         });
 
         if (!user) {
@@ -139,15 +162,22 @@ export async function getUser(req, res) {
         user.password = decrypt(user.password);
         return res.status(200).json({ success: true, message: "User retrieved successfully", data: user });
     } catch (error) {
+        logger.error('getUser error:', error);
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
 
 /**
- * Retrieves all users from the system
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and array of users
+ * Retrieves all users from the system.
+ *
+ * @function getAllUsers
+ * @async
+ * @param {Request} req - Express request object
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Array|null}: Array of users on success, null on failure
  */
 export async function getAllUsers(req, res) {
     try {
@@ -171,15 +201,22 @@ export async function getAllUsers(req, res) {
 
         return res.status(200).json({ success: true, message: "Users retrieved successfully", data: users });
     } catch (error) {
+        logger.error('getAllUsers error:', error);
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
 
 /**
- * Deletes a user from the system
- * @param {Object} req - Express request object containing user ID in query
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status
+ * Deletes a user from the system (soft delete).
+ *
+ * @function deleteUser
+ * @async
+ * @param {Request} req - Express request object containing user ID in query
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {null}: Always null
  */
 export async function deleteUser(req, res) {
     try {
@@ -189,7 +226,7 @@ export async function deleteUser(req, res) {
         const { id } = req.query;
 
         const existingUser = await db.user.findUnique({
-            where: { id: parseInt(id) , isDeleted: false }
+            where: { id: parseInt(id), isDeleted: false }
         });
 
         if (!existingUser) {
@@ -203,11 +240,24 @@ export async function deleteUser(req, res) {
 
         return res.status(200).json({ success: true, message: "User deleted successfully", data: null });
     } catch (error) {
+        logger.error('deleteUser error:', error);
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
 
 
+/**
+ * Permanently deletes a user from the system (hard delete).
+ *
+ * @function deleteUserFromTable
+ * @async
+ * @param {Request} req - Express request object containing user ID in query
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {null}: Always null
+ */
 export async function deleteUserFromTable(req, res) {
     try {
         if (!req.query?.id) {
@@ -229,22 +279,30 @@ export async function deleteUserFromTable(req, res) {
 
         return res.status(200).json({ success: true, message: "User deleted successfully", data: null });
     } catch (error) {
+        logger.error('deleteUserFromTable error:', error);
         return res.status(400).json({ success: false, message: error.message, data: null });
     }
 }
 
 
 /**
- * Resets the password of a user
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @returns {Object} JSON response with success status and message
+ * Resets the password of a user.
+ * Validates input, checks old password, and updates to new password.
+ *
+ * @function resetPassword
+ * @async
+ * @param {Request} req - Express request object
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {null}: Always null
  */
 export async function resetPassword(req, res) {
     try {
         const { err, status: validationStatus } = await validatorFunction(req.body, resetPasswordValidation);
         if (!validationStatus) {
-            return res.status(422).json({ message: "Validation Error", errors: err });
+            return res.status(422).json({ success: false, message: "Validation Error", data: err });
         }
 
         const { id, oldPassword, newPassword } = req.body;
@@ -268,7 +326,7 @@ export async function resetPassword(req, res) {
         return res.status(200).json({ success: true, message: "Password reset successfully", data: null });
 
     } catch (error) {
-
-        return res.status(500).json({ success: false, message: "Something went wrong", data: null, error: error });
+        logger.error('resetPassword error:', error);
+        return res.status(500).json({ success: false, message: error.message, data: null });
     }
 }

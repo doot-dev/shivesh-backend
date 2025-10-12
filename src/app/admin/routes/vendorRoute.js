@@ -7,6 +7,8 @@ const vendorRoute = Router();
 vendorRoute
   .post('/', verifyToken, vendorController.createVendor)
   .get('/', verifyToken, vendorController.getAllVendors)
-  .get('/:id', verifyToken, vendorController.getVendor);
+  .get('/:id', verifyToken, vendorController.getVendor)
+  .put('/', verifyToken, vendorController.updateVendor)
+  .delete('/:id', verifyToken, vendorController.deleteVendor);
 
 export default vendorRoute;
