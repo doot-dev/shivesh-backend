@@ -123,9 +123,18 @@ export async function GetAllProducts(req, res) {
         const page = parseInt(req.query.page) || 1;
         const length = parseInt(req.query.length) || 10;
         const skip = (page - 1) * length;
+        const search = req.query.search || '';
 
+        const whereClause = {
+            isDeleted: false,
+            ...(search && {
+                name: {
+                    contains: search,
+                }
+            })
+        };
         let products = await db.product.findMany({
-            where: { isDeleted: false },
+            where: whereClause,
             skip: skip,
             take: length,
             include: {
