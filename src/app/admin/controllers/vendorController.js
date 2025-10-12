@@ -1,5 +1,5 @@
 import logger from "../../../helper/logger.js";
-import { addLocationValidation, createVendorValidation, updateVendorValidation } from "../validations/vendorValidation.js";
+import { addLocationValidation, createVendorValidation, updateLocationValidation, updateVendorValidation } from "../validations/vendorValidation.js";
 import db from "../../../config/database.js";
 import { validatorFunction } from "../../../helper/validate.js";
 
@@ -325,3 +325,204 @@ export async function addLocation(req, res) {
         return res.status(500).json({ message: 'Internal server error', success: false, data: null });
     }
 }
+
+/**
+ * Updates an existing location of a vendor.
+ * Validates input and updates location record.
+ *
+ * @function updateLocation
+ * @async
+ * @param {Request} req - Express request object containing location data in body
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: Updated location data on success, null on failure
+ */
+export async function updateLocation(req, res) {
+    try {
+
+        const { err, status: validationStatus } = await validatorFunction(req.body, updateLocationValidation);
+        if (!validationStatus) {
+            return res.status(422).json({ message: "Validation Error", data: err, success: false });
+        }
+
+        const { id, vendorId, plantName, address, latitude, longitude } = req.body;
+        const location = await db.vendorLocation.findFirst({ where: { id: parseInt(id), isDeleted: false } });
+        if (!location) {
+            return res.status(404).json({ message: 'Location not found', success: false, data: null });
+        }
+
+        const vendor = await db.vendor.findFirst({ where: { id: parseInt(vendorId), isDeleted: false } });
+        if (!vendor) {
+            return res.status(404).json({ message: 'Vendor not found', success: false, data: null });
+        }
+
+        const updatedLocation = await db.vendorLocation.update({
+            where: { id: parseInt(id) },
+            data: {
+                vendorId: parseInt(vendorId),
+                plantName: plantName,
+                address: address,
+                latitude: latitude,
+                longitude: longitude,
+            }
+        });
+
+        return res.status(200).json({ message: 'Location updated successfully', data: updatedLocation, success: true });
+    } catch (error) {
+        logger.error('Error updating location:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+
+/**
+ * Retrieves all locations for a specific vendor.
+ * Supports pagination.
+ *
+ * @function getAllLocations
+ * @async
+ * @param {Request} req - Express request object containing vendorId in params and page, length in query
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Array|null}: Array of locations on success, null on failure
+ */
+export async function getAllLocations(req, res) {
+    try {
+        const { vendorId } = req.params;
+        const page = parseInt(req.query.page) || 1;
+        const length = parseInt(req.query.length) || 10;
+        const skip = (page - 1) * length;
+
+        if (!vendorId) {
+            return res.status(400).json({ message: 'Vendor ID is required', success: false, data: null });
+        }
+
+        const vendor = await db.vendor.findFirst({
+            where: { id: parseInt(vendorId), isDeleted: false }
+        });
+
+        if (!vendor) {
+            return res.status(404).json({ message: 'Vendor not found', success: false, data: null });
+        }
+
+        const locations = await db.vendorLocation.findMany({
+            where: {
+                vendorId: parseInt(vendorId),
+                isDeleted: false
+            },
+            skip: skip,
+            take: length,
+            include: {
+                handlers: {
+                    where: { isDeleted: false }
+                }
+            }
+        });
+
+        const totalCount = await db.vendorLocation.count({
+            where: {
+                vendorId: parseInt(vendorId),
+                isDeleted: false
+            }
+        });
+
+        return res.status(200).json({
+            message: 'Locations retrieved successfully',
+            data: locations,
+            meta: {
+                count: totalCount,
+                currentPage: page,
+                length: length,
+                totalPages: Math.ceil(totalCount / length),
+                limit: length
+            },
+            success: true
+        });
+    } catch (error) {
+        logger.error('Error retrieving locations:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+
+/**
+ * Retrieves a single location by ID.
+ *
+ * @function getLocation
+ * @async
+ * @param {Request} req - Express request object containing location ID in params
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: Location data on success, null on failure
+ */
+export async function getLocation(req, res) {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ message: 'Location ID is required', success: false, data: null });
+        }
+
+        const location = await db.vendorLocation.findFirst({
+            where: { id: parseInt(id), isDeleted: false },
+            include: {
+                handlers: {
+                    where: { isDeleted: false }
+                }
+            }
+        });
+
+        if (!location) {
+            return res.status(404).json({ message: 'Location not found', success: false, data: null });
+        }
+
+        return res.status(200).json({ message: 'Location retrieved successfully', data: location, success: true });
+    } catch (error) {
+        logger.error('Error retrieving location:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+
+/**
+ * Deletes a location from the system (soft delete).
+ *
+ * @function deleteLocation
+ * @async
+ * @param {Request} req - Express request object containing location ID in params
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {null}: Always null
+ */
+export async function deleteLocation(req, res) {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ message: 'Location ID is required', success: false, data: null });
+        }
+
+        const location = await db.vendorLocation.findFirst({
+            where: { id: parseInt(id), isDeleted: false }
+        });
+
+        if (!location) {
+            return res.status(404).json({ message: 'Location not found', success: false, data: null });
+        }
+
+        await db.vendorLocation.update({
+            where: { id: parseInt(id) },
+            data: { isDeleted: true }
+        });
+
+        logger.info('Location deleted successfully:', id);
+        return res.status(200).json({ message: 'Location deleted successfully', success: true, data: null });
+    } catch (error) {
+        logger.error('Error deleting location:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+

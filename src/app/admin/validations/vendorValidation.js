@@ -24,3 +24,12 @@ export const addLocationValidation = {
     latitude: "required|numeric",
     longitude: "required|numeric"
 }
+
+export const updateLocationValidation = {
+    id: "required|integer",
+    vendorId: "required|integer",
+    plantName: "required|string",
+    address: "required|string",
+    latitude: "required|numeric",
+    longitude: "required|numeric"
+}

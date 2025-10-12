@@ -155,7 +155,16 @@ export async function GetAllProducts(req, res) {
         logger.info(`Retrieved ${products.length} products from the database.`);
         const productCount = await db.product.count({ where: { isDeleted: false } });
         const totalPages = Math.ceil(productCount / length);
-        return res.status(200).json({ success: true, message: "Products fetched successfully", data: products, meta: { count: productCount, totalPages: totalPages, currentPage: page, limit: length } });
+        return res.status(200).json({
+            success: true, message: "Products fetched successfully",
+            data: products,
+            meta: {
+                count: productCount,
+                totalPages: totalPages,
+                currentPage: page,
+                limit: length
+            }
+        });
     } catch (error) {
         logger.error('Error retrieving products:', error);
         return res.status(500).json({ success: false, message: error.message, data: null });
