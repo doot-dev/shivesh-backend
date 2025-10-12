@@ -1,5 +1,5 @@
 import logger from "../../../helper/logger.js";
-import { createVendorValidation, updateVendorValidation } from "../validations/vendorValidation.js";
+import { addLocationValidation, createVendorValidation, updateVendorValidation } from "../validations/vendorValidation.js";
 import db from "../../../config/database.js";
 import { validatorFunction } from "../../../helper/validate.js";
 
@@ -25,7 +25,29 @@ export async function createVendor(req, res) {
         }
 
         const { companyName, ownerName, phone, address } = req.body;
+        if (req.body.gstNumber) {
+            const existingVendor = await db.vendor.findFirst({
+                where: {
+                    gstNumber: req.body.gstNumber,
+                    isDeleted: false
+                }
+            });
+            if (existingVendor) {
+                return res.status(409).json({ message: 'GST Number already exists', success: false, data: null });
+            }
+        }
 
+        if (req.body.panNumber) {
+            const existingVendorPan = await db.vendor.findFirst({
+                where: {
+                    panNumber: req.body.panNumber,
+                    isDeleted: false
+                }
+            });
+            if (existingVendorPan) {
+                return res.status(409).json({ message: 'PAN Number already exists', success: false, data: null });
+            }
+        }
         const newVendor = await db.vendor.create({
             data: {
                 companyName: companyName,
@@ -211,6 +233,31 @@ export async function updateVendor(req, res) {
             return res.status(404).json({ message: 'Vendor not found', success: false, data: null });
         }
 
+        if (req.body.gstNumber) {
+            const existingVendor = await db.vendor.findFirst({
+                where: {
+                    gstNumber: req.body.gstNumber,
+                    isDeleted: false,
+                    NOT: { id: parseInt(id) }
+                }
+            });
+            if (existingVendor) {
+                return res.status(409).json({ message: 'GST Number already exists for another vendor', success: false, data: null });
+            }
+        }
+
+        if (req.body.panNumber) {
+            const existingVendorPan = await db.vendor.findFirst({
+                where: {
+                    panNumber: req.body.panNumber,
+                    isDeleted: false,
+                    NOT: { id: parseInt(id) }
+                }
+            });
+            if (existingVendorPan) {
+                return res.status(409).json({ message: 'PAN Number already exists for another vendor', success: false, data: null });
+            }
+        }
 
         const updatedVendor = await db.vendor.update({
             where: { id: parseInt(id) },
@@ -230,6 +277,51 @@ export async function updateVendor(req, res) {
 
     } catch (error) {
         logger.error('Error updating vendor:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+
+
+/**
+ * Adds a new location to a vendor.
+ * Validates input and creates a new location record.
+ *
+ * @function addLocation
+ * @async
+ * @param {Request} req - Express request object containing location data in body
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - message {string}: Status message
+ *   - data {Object|null}: Created location data on success, null on failure
+ */
+export async function addLocation(req, res) {
+    try {
+
+        const { err, status: validationStatus } = await validatorFunction(req.body, addLocationValidation);
+        if (!validationStatus) {
+            return res.status(422).json({ message: "Validation Error", data: err, success: false });
+        }
+
+        const { vendorId, plantName, address, latitude, longitude } = req.body;
+
+        const vendor = await db.vendor.findFirst({ where: { id: parseInt(vendorId), isDeleted: false } });
+        if (!vendor) {
+            return res.status(404).json({ message: 'Vendor not found', success: false, data: null });
+        }
+
+        const newLocation = await db.vendorLocation.create({
+            data: {
+                vendorId: parseInt(vendorId),
+                plantName: plantName,
+                address: address,
+                latitude: latitude,
+                longitude: longitude,
+            }
+        });
+        return res.status(201).json({ message: 'Location added successfully', data: newLocation, success: true });
+    } catch (error) {
+        logger.error('Error adding location:', error);
         return res.status(500).json({ message: 'Internal server error', success: false, data: null });
     }
 }

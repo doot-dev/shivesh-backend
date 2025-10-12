@@ -11,4 +11,9 @@ vendorRoute
   .put('/', verifyToken, vendorController.updateVendor)
   .delete('/:id', verifyToken, vendorController.deleteVendor);
 
+
+vendorRoute
+  .post("/location", verifyToken, vendorController.addLocation);
+
+
 export default vendorRoute;

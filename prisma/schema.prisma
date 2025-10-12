@@ -42,13 +42,14 @@ model OTP {
 }
 
 model Product {
-  id        Int      @id @default(autoincrement())
-  name      String
-  size      Size[]
-  isActive  Boolean  @default(true)
-  isDeleted Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             Int              @id @default(autoincrement())
+  name           String
+  size           Size[]
+  isActive       Boolean          @default(true)
+  isDeleted      Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  VendorLocation VendorLocation[]
 }
 
 model Size {
@@ -81,6 +82,7 @@ model Vendor {
 model VendorLocation {
   id        Int             @id @default(autoincrement())
   vendorId  Int
+  plantName String          @db.VarChar(255)
   latitude  Decimal         @db.Decimal(10, 7)
   longitude Decimal         @db.Decimal(10, 7)
   address   String          @db.Text
@@ -89,6 +91,8 @@ model VendorLocation {
   isDeleted Boolean         @default(false)
   Vendor    Vendor          @relation(fields: [vendorId], references: [id])
   handlers  VendorHandler[]
+  product   Product?        @relation(fields: [productId], references: [id])
+  productId Int?
 }
 
 model VendorHandler {
@@ -102,248 +106,6 @@ model VendorHandler {
   VendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
   vendorLocationId Int?
 }
-
-// // ========================================
-// // CLIENT MANAGEMENT MODELS
-// // ========================================
-
-// model Client {
-//   id          Int      @id @default(autoincrement())
-//   name        String
-//   email       String   @unique
-//   phone       String   @unique
-//   address     String   @db.Text
-//   gstNumber   String?  @unique
-//   panNumber   String?  @unique
-//   creditLimit Decimal  @default(0) @db.Decimal(15, 2)
-//   isActive    Boolean  @default(true)
-//   createdAt   DateTime @default(now())
-//   updatedAt   DateTime @updatedAt
-
-//   // Relations
-//   projects Project[]
-//   orders   Order[]
-
-//   @@map("clients")
-// }
-
-// // ========================================
-// // PRODUCT & VENDOR MODELS
-// // ========================================
-
-// model Vendor {
-//   id          Int      @id @default(autoincrement())
-//   name        String
-//   contactName String
-//   phone       String
-//   email       String?
-//   address     String   @db.Text
-//   isActive    Boolean  @default(true)
-//   createdAt   DateTime @default(now())
-//   updatedAt   DateTime @updatedAt
-
-//   // Relations
-//   vendorProducts VendorProduct[]
-
-//   @@map("vendors")
-// }
-
-// model VendorProduct {
-//   id        Int     @id @default(autoincrement())
-//   vendorId  Int
-//   productId Int
-//   price     Decimal @db.Decimal(10, 2)
-//   isActive  Boolean @default(true)
-
-//   // Relations
-//   vendor  Vendor  @relation(fields: [vendorId], references: [id])
-//   product Product @relation(fields: [productId], references: [id])
-
-//   @@unique([vendorId, productId])
-//   @@map("vendor_products")
-// }
-
-// // ========================================
-// // PROJECT MANAGEMENT MODELS
-// // ========================================
-
-// model Project {
-//   id          Int           @id @default(autoincrement())
-//   name        String
-//   siteAddress String        @db.Text
-//   clientId    Int
-//   managerId   Int
-//   status      ProjectStatus @default(ACTIVE)
-//   startDate   DateTime      @default(now())
-//   endDate     DateTime?
-//   creditLimit Decimal       @default(0) @db.Decimal(15, 2)
-//   resetPeriod Int           @default(30) // days
-//   commission  Decimal       @default(50) @db.Decimal(8, 2) // per m³
-//   includeCommissionInCost Boolean @default(false)
-//   createdAt   DateTime      @default(now())
-//   updatedAt   DateTime      @updatedAt
-
-//   // Relations
-//   client          Client            @relation(fields: [clientId], references: [id])
-//   manager         User              @relation("ProjectManager", fields: [managerId], references: [id])
-//   orders          Order[]
-//   projectProducts ProjectProduct[]
-
-//   @@map("projects")
-// }
-
-// model ProjectProduct {
-//   id        Int     @id @default(autoincrement())
-//   projectId Int
-//   productId Int
-//   price     Decimal @db.Decimal(10, 2)
-//   isActive  Boolean @default(true)
-
-//   // Relations
-//   project Project @relation(fields: [projectId], references: [id])
-//   product Product @relation(fields: [productId], references: [id])
-
-//   @@unique([projectId, productId])
-//   @@map("project_products")
-// }
-
-// // ========================================
-// // ORDER MANAGEMENT MODELS
-// // ========================================
-
-// model Order {
-//   id          Int         @id @default(autoincrement())
-//   orderNumber String      @unique
-//   projectId   Int
-//   clientId    Int
-//   status      OrderStatus @default(NEW)
-//   totalAmount Decimal     @default(0) @db.Decimal(15, 2)
-//   notes       String?     @db.Text
-//   createdById Int
-//   updatedById Int?
-//   createdAt   DateTime    @default(now())
-//   updatedAt   DateTime    @updatedAt
-
-//   // Relations
-//   project       Project           @relation(fields: [projectId], references: [id])
-//   client        Client            @relation(fields: [clientId], references: [id])
-//   createdBy     User              @relation("OrderCreatedBy", fields: [createdById], references: [id])
-//   updatedBy     User?             @relation("OrderUpdatedBy", fields: [updatedById], references: [id])
-//   orderItems    OrderItem[]
-//   truckAssignments TruckAssignment[]
-//   qualityChecks QualityCheck[]
-//   bills         Bill[]
-
-//   @@map("orders")
-// }
-
-// model OrderItem {
-//   id        Int     @id @default(autoincrement())
-//   orderId   Int
-//   productId Int
-//   quantity  Decimal @db.Decimal(10, 3)
-//   price     Decimal @db.Decimal(10, 2)
-//   total     Decimal @db.Decimal(15, 2)
-
-//   // Relations
-//   order   Order   @relation(fields: [orderId], references: [id])
-//   product Product @relation(fields: [productId], references: [id])
-
-//   @@map("order_items")
-// }
-
-// // ========================================
-// // TRUCK & DELIVERY MODELS
-// // ========================================
-
-// model Truck {
-//   id           Int      @id @default(autoincrement())
-//   truckNumber  String   @unique
-//   driverName   String
-//   driverPhone  String
-//   capacity     Decimal  @db.Decimal(8, 2) // in m³
-//   isActive     Boolean  @default(true)
-//   createdAt    DateTime @default(now())
-//   updatedAt    DateTime @updatedAt
-
-//   // Relations
-//   truckAssignments TruckAssignment[]
-
-//   @@map("trucks")
-// }
-
-// model TruckAssignment {
-//   id             Int               @id @default(autoincrement())
-//   orderId        Int
-//   truckId        Int
-//   assignedById   Int
-//   status         DeliveryStatus    @default(ASSIGNED)
-//   scheduledDate  DateTime
-//   deliveredDate  DateTime?
-//   chalanNumber   String?
-//   chalanDocument String?           // file path
-//   billDocument   String?           // file path
-//   notes          String?           @db.Text
-//   createdAt      DateTime          @default(now())
-//   updatedAt      DateTime          @updatedAt
-
-//   // Relations
-//   order      Order @relation(fields: [orderId], references: [id])
-//   truck      Truck @relation(fields: [truckId], references: [id])
-//   assignedBy User  @relation(fields: [assignedById], references: [id])
-
-//   @@map("truck_assignments")
-// }
-
-// // ========================================
-// // QUALITY & TM MODELS
-// // ========================================
-
-// model QualityCheck {
-//   id               Int      @id @default(autoincrement())
-//   orderId          Int
-//   tmNumber         String
-//   tmStatus         String
-//   companyName      String
-//   contactPerson    String
-//   contactPhone     String
-//   testResults      String?  @db.Text
-//   approvalStatus   String   @default("PENDING")
-//   checkedById      Int
-//   createdAt        DateTime @default(now())
-//   updatedAt        DateTime @updatedAt
-
-//   // Relations
-//   order     Order @relation(fields: [orderId], references: [id])
-//   checkedBy User  @relation(fields: [checkedById], references: [id])
-
-//   @@map("quality_checks")
-// }
-
-// // ========================================
-// // BILLING MODELS
-// // ========================================
-
-// model Bill {
-//   id          Int        @id @default(autoincrement())
-//   billNumber  String     @unique
-//   orderId     Int
-//   totalAmount Decimal    @db.Decimal(15, 2)
-//   gstAmount   Decimal    @default(0) @db.Decimal(15, 2)
-//   finalAmount Decimal    @db.Decimal(15, 2)
-//   status      BillStatus @default(PENDING)
-//   billDate    DateTime   @default(now())
-//   dueDate     DateTime?
-//   paidDate    DateTime?
-//   billDocument String?   // file path
-//   createdAt   DateTime   @default(now())
-//   updatedAt   DateTime   @updatedAt
-
-//   // Relations
-//   order Order @relation(fields: [orderId], references: [id])
-
-//   @@map("bills")
-// }
 
 // ========================================
 // ENUMS
