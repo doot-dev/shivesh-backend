@@ -4,7 +4,16 @@ import { verifyToken } from '../../../config/jwtConfig.js';
 
 const vendorRoute = Router();
 
-// Location routes - most specific routes first
+
+//handler routes 
+vendorRoute
+  .post('/handlers', verifyToken, vendorController.addHandler)
+  .put('/handlers', verifyToken, vendorController.updateHandler)
+  .get('/handlers/:locationId', verifyToken, vendorController.getAllHandlers)
+  .delete('/handlers/:id', verifyToken, vendorController.deleteHandler);
+
+
+// Location routes 
 vendorRoute
   .post('/locations', verifyToken, vendorController.addLocation)
   .get('/locations/:id', verifyToken, vendorController.getLocation)

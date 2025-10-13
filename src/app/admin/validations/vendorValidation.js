@@ -33,3 +33,18 @@ export const updateLocationValidation = {
     latitude: "required|numeric",
     longitude: "required|numeric"
 }
+
+export const addHandlerValidation = {
+    locationId: "required|integer",
+    name: "required|string",
+    phone: "required|string",
+    email: "email",
+}
+
+export const updateHandlerValidation = {
+    id: "required|integer",
+    locationId: "required|integer",
+    name: "required|string",
+    phone: "required|string",
+    email: "required|string",
+}

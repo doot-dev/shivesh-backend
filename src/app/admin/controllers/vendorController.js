@@ -1,8 +1,9 @@
 import logger from "../../../helper/logger.js";
-import { addLocationValidation, createVendorValidation, updateLocationValidation, updateVendorValidation } from "../validations/vendorValidation.js";
+import { addHandlerValidation, addLocationValidation, createVendorValidation, updateHandlerValidation, updateLocationValidation, updateVendorValidation } from "../validations/vendorValidation.js";
 import db from "../../../config/database.js";
 import { validatorFunction } from "../../../helper/validate.js";
 
+// region Vendor controllers
 /**
  * Creates a new vendor in the system.
  * Validates input and creates a new vendor record.
@@ -282,6 +283,7 @@ export async function updateVendor(req, res) {
 }
 
 
+// region Location controllers
 /**
  * Adds a new location to a vendor.
  * Validates input and creates a new location record.
@@ -526,3 +528,156 @@ export async function deleteLocation(req, res) {
     }
 }
 
+
+
+// region Handler controllers
+
+
+export async function addHandler(req, res) {
+    try {
+        const { err, status: validationStatus } = await validatorFunction(req.body, addHandlerValidation
+        );
+        if (!validationStatus) {
+            return res.status(422).json({ message: "Validation Error", data: err, success: false });
+        }
+
+        const { locationId, name, phone } = req.body;
+        const location = await db.vendorLocation.findFirst({ where: { id: parseInt(locationId), isDeleted: false } });
+        if (!location) {
+            return res.status(404).json({ message: 'Location not found', success: false, data: null });
+        }
+
+        const newHandler = await db.vendorHandler.create({
+            data: {
+                vendorLocationId: parseInt(locationId),
+                name: name,
+                phone: phone,
+                email: req.body.email || null,
+            }
+        });
+
+        logger.info('Handler added successfully:', newHandler);
+        return res.status(201).json({ message: 'Handler added successfully', data: newHandler, success: true });
+
+    } catch (error) {
+        logger.error('Error adding handler:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+
+export async function updateHandler(req, res) {
+    try {
+
+        const { err, status: validationStatus } = await validatorFunction(req.body, updateHandlerValidation);
+        if (!validationStatus) {
+            return res.status(422).json({ message: "Validation Error", data: err, success: false });
+        }
+        const { id, locationId, name, phone } = req.body;
+        const handler = await db.vendorHandler.findFirst({ where: { id: parseInt(id), isDeleted: false } });
+        if (!handler) {
+            return res.status(404).json({ message: 'Handler not found', success: false, data: null });
+        }
+
+        const location = await db.vendorLocation.findFirst({ where: { id: parseInt(locationId), isDeleted: false } });
+        if (!location) {
+            return res.status(404).json({ message: 'Location not found', success: false, data: null });
+        }
+
+        const updatedHandler = await db.vendorHandler.update({
+            where: { id: parseInt(id) },
+            data: {
+                vendorLocationId: parseInt(locationId),
+                name: name,
+                phone: phone,
+                email: req.body.email || null,
+            }
+        });
+
+        logger.info('Handler updated successfully:', updatedHandler);
+        return res.status(200).json({ message: 'Handler updated successfully', data: updatedHandler, success: true });
+
+    } catch (error) {
+        logger.error('Error updating handler:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+
+export async function getAllHandlers(req, res) {
+    try {
+        const { locationId } = req.params;
+        const page = parseInt(req.query.page) || 1;
+        const length = parseInt(req.query.length) || 10;
+        const skip = (page - 1) * length;
+
+        if (!locationId) {
+            return res.status(400).json({ message: 'Location ID is required', success: false, data: null });
+        }
+
+        const location = await db.vendorLocation.findFirst({
+            where: { id: parseInt(locationId), isDeleted: false }
+        });
+
+        if (!location) {
+            return res.status(404).json({ message: 'Location not found', success: false, data: null });
+        }
+
+        const handlers = await db.vendorHandler.findMany({
+            where: {
+                vendorLocationId: parseInt(locationId),
+                isDeleted: false
+            },
+            skip: skip,
+            take: length,
+        });
+
+        const totalCount = await db.vendorHandler.count({
+            where: {
+                vendorLocationId: parseInt(locationId),
+                isDeleted: false
+            }
+        });
+
+        return res.status(200).json({
+            message: 'Handlers retrieved successfully',
+            data: handlers,
+            meta: {
+                count: totalCount,
+                currentPage: page,
+                length: length,
+                totalPages: Math.ceil(totalCount / length),
+                limit: length
+            },
+            success: true
+        });
+    } catch (error) {
+        logger.error('Error retrieving handlers:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
+export async function deleteHandler(req, res) {
+    try {
+        const { id } = req.params;
+        if (!id) {
+            return res.status(400).json({ message: 'Handler ID is required', success: false, data: null });
+        }
+
+        const handler = await db.vendorHandler.findFirst({
+            where: { id: parseInt(id), isDeleted: false }
+        });
+
+        if (!handler) {
+            return res.status(404).json({ message: 'Handler not found', success: false, data: null });
+        }
+
+        await db.vendorHandler.update({
+            where: { id: parseInt(id) },
+            data: { isDeleted: true }
+        });
+
+        logger.info('Handler deleted successfully:', id);
+        return res.status(200).json({ message: 'Handler deleted successfully', success: true, data: null });
+    } catch (error) {
+        logger.error('Error deleting handler:', error);
+        return res.status(500).json({ message: 'Internal server error', success: false, data: null });
+    }
+}
