@@ -21,8 +21,8 @@ export const addLocationValidation = {
     vendorId: "required|integer",
     plantName: "required|string",
     address: "required|string",
-    latitude: "required|numeric",
-    longitude: "required|numeric",
+    latitude: "required|string",
+    longitude: "required|string",
     productId: "required|integer"
 }
 
@@ -31,8 +31,8 @@ export const updateLocationValidation = {
     vendorId: "required|integer",
     plantName: "required|string",
     address: "required|string",
-    latitude: "required|numeric",
-    longitude: "required|numeric",
+    latitude: "required|string",
+    longitude: "required|string",
     productId: "required|integer"
 }
 
