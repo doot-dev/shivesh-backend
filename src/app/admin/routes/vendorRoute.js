@@ -17,7 +17,7 @@ vendorRoute
 vendorRoute
   .post('/locations', verifyToken, vendorController.addLocation)
   .get('/locations/:id', verifyToken, vendorController.getLocation)
-  .put('/locations/:id', verifyToken, vendorController.updateLocation)
+  .put('/locations/', verifyToken, vendorController.updateLocation)
   .delete('/locations/:id', verifyToken, vendorController.deleteLocation);
 
 // Vendor routes

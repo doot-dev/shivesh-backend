@@ -305,7 +305,7 @@ export async function addLocation(req, res) {
             return res.status(422).json({ message: "Validation Error", data: err, success: false });
         }
 
-        const { vendorId, plantName, address, latitude, longitude } = req.body;
+        const { vendorId, plantName, address, latitude, longitude, productId } = req.body;
 
         const vendor = await db.vendor.findFirst({ where: { id: parseInt(vendorId), isDeleted: false } });
         if (!vendor) {
@@ -319,6 +319,7 @@ export async function addLocation(req, res) {
                 address: address,
                 latitude: latitude,
                 longitude: longitude,
+                productId: productId,
             }
         });
         return res.status(201).json({ message: 'Location added successfully', data: newLocation, success: true });
@@ -349,7 +350,7 @@ export async function updateLocation(req, res) {
             return res.status(422).json({ message: "Validation Error", data: err, success: false });
         }
 
-        const { id, vendorId, plantName, address, latitude, longitude } = req.body;
+        const { id, vendorId, plantName, address, latitude, longitude, productId } = req.body;
         const location = await db.vendorLocation.findFirst({ where: { id: parseInt(id), isDeleted: false } });
         if (!location) {
             return res.status(404).json({ message: 'Location not found', success: false, data: null });
@@ -368,6 +369,8 @@ export async function updateLocation(req, res) {
                 address: address,
                 latitude: latitude,
                 longitude: longitude,
+                productId: productId,
+
             }
         });
 
