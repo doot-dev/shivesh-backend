@@ -83,8 +83,8 @@ model VendorLocation {
   id        Int             @id @default(autoincrement())
   vendorId  Int
   plantName String          @db.VarChar(255)
-  latitude  Decimal         @db.Decimal(10, 7)
-  longitude Decimal         @db.Decimal(10, 7)
+  latitude  String          @db.Text 
+  longitude String          @db.Text 
   address   String          @db.Text
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
