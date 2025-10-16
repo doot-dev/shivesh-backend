@@ -423,6 +423,9 @@ export async function getAllLocations(req, res) {
             include: {
                 handlers: {
                     where: { isDeleted: false }
+                },
+                product: {
+                    select: { id: true, name: true }
                 }
             }
         });
@@ -538,6 +541,7 @@ export async function deleteLocation(req, res) {
 
 export async function addHandler(req, res) {
     try {
+
         const { err, status: validationStatus } = await validatorFunction(req.body, addHandlerValidation
         );
         if (!validationStatus) {
