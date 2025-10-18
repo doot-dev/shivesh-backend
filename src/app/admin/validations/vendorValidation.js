@@ -48,5 +48,5 @@ export const updateHandlerValidation = {
     locationId: "required|integer",
     name: "required|string",
     phone: "required|string",
-    email: "required|string",
+    email: "email",
 }
