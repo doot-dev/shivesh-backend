@@ -40,7 +40,7 @@ export const upsertLead = async (req, res) => {
             entityType: "LEAD",
             entityId: result.id,
             action: isNew ? "CREATED" : "UPDATED",
-            createdById: assignedToId || null,
+            createdById: req.user.id || null,
         });
 
         return res.status(201).json({ success: true, data: result });
@@ -110,7 +110,7 @@ export const updateLead = async (req, res) => {
                 entityType: "LEAD",
                 entityId: leadId,
                 action: "STATUS_CHANGED",
-                createdById: assignedToId || null,
+                createdById: req.user.id || null,
             });
         }
 
@@ -122,7 +122,7 @@ export const updateLead = async (req, res) => {
                 entityType: "LEAD",
                 entityId: leadId,
                 action: "ASSIGNED",
-                createdById: assignedToId || null,
+                createdById: req.user.id || null,
             });
         }
 
