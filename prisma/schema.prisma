@@ -116,6 +116,7 @@ model Lead {
   email         String?
   phone         String?
   address       String?
+  requirement   String?    @db.Text
   source        Source     @default(REFERRAL)
   status        LeadStatus @default(NEW)
   assignedToId  Int?
