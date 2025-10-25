@@ -116,6 +116,10 @@ model Lead {
   email         String?
   phone         String?
   address       String?
+  date          DateTime?
+  time          String?
+  title         String?
+  description   String?    @db.Text
   requirement   String?    @db.Text
   source        Source     @default(REFERRAL)
   status        LeadStatus @default(NEW)
