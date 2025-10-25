@@ -18,18 +18,20 @@ datasource db {
 // ========================================
 
 model User {
-  id          Int       @id @default(autoincrement())
-  name        String
-  employeeId  String
-  userName    String
-  password    String
-  role        UserRole
-  status      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  isDeleted   Boolean   @default(false)
-  lastLoginAt DateTime?
-  menuAccess  Json      @default("[]") // JSON array of accessible menu items
+  id            Int        @id @default(autoincrement())
+  name          String
+  employeeId    String
+  userName      String
+  password      String
+  role          UserRole
+  status        Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  isDeleted     Boolean    @default(false)
+  lastLoginAt   DateTime?
+  menuAccess    Json       @default("[]") // JSON array of accessible menu items
+  assignedLeads Lead[]     @relation("LeadAssignedTo")
+  activities    Activity[] @relation("UserActivities")
 }
 
 model OTP {
@@ -83,8 +85,8 @@ model VendorLocation {
   id        Int             @id @default(autoincrement())
   vendorId  Int
   plantName String          @db.VarChar(255)
-  latitude  String          @db.Text 
-  longitude String          @db.Text 
+  latitude  String          @db.Text
+  longitude String          @db.Text
   address   String          @db.Text
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
@@ -105,6 +107,36 @@ model VendorHandler {
   isDeleted        Boolean         @default(false)
   VendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
   vendorLocationId Int?
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  companyName   String
+  contactPerson String
+  email         String?
+  phone         String?
+  address       String?
+  source        Source     @default(REFERRAL)
+  status        LeadStatus @default(NEW)
+  assignedToId  Int?
+  assignedTo    User?      @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Activity {
+  id          String         @id @default(cuid())
+  title       String?
+  description String?
+  entityType  EntityType
+  entityId    String // e.g. Lead ID, Post ID, etc.
+  action      ActivityAction
+  createdById Int
+  createdBy   User           @relation("UserActivities", fields: [createdById], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([entityType, entityId])
 }
 
 // ========================================
@@ -151,4 +183,36 @@ enum BillStatus {
   PAID
   OVERDUE
   CANCELLED
+}
+
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  CONVERTED
+  LOST
+}
+
+enum Source {
+  REFERRAL
+  WEBSITE
+  COLD_CALL
+  ADVERTISEMENT
+  SOCIAL_MEDIA
+}
+
+enum EntityType {
+  LEAD
+  POST
+  PROJECT
+  TASK
+  USER
+}
+
+enum ActivityAction {
+  CREATED
+  UPDATED
+  ASSIGNED
+  COMMENTED
+  STATUS_CHANGED
+  LOGGED
 }
