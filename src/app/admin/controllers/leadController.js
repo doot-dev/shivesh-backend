@@ -110,7 +110,7 @@ export const updateLead = async (req, res) => {
                 entityType: "LEAD",
                 entityId: leadId,
                 action: "STATUS_CHANGED",
-                createdById: req.user.id || null,
+                createdById: req.user.data.id || null,
             });
         }
 
