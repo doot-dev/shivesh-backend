@@ -6,7 +6,7 @@ export const createClientValidation = {
   password: "required|min:6",
   address: "required",
   hasGST: "required|boolean",
-  gstNumber: "requiredIf:hasGST,true",
+  gstNumber: "required_if:hasGST,true",
   ownerPan: "regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/",
   ownerAadhaar: "regex:/^[0-9]{12}$/",
 };
@@ -18,7 +18,7 @@ export const updateClientValidation = {
   email: "required|email",
   address: "required",
   hasGST: "boolean",
-  gstNumber: "requiredIf:hasGST,true",
+  gstNumber: "required_if:hasGST,true",
   ownerPan: "regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/",
   ownerAadhaar: "regex:/^[0-9]{12}$/",
 };

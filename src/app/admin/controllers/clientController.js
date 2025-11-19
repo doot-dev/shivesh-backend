@@ -8,6 +8,7 @@ import db from "../../../config/database.js";
 import logger from "../../../helper/logger.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import bcrypt from "bcryptjs";
+import { getPublicUrl, deleteUploadedFile } from "../../../config/multerConfig.js";
 
 // 🔵 1. GET CLIENT LIST
 export const getClientList = async (req, res) => {
@@ -388,12 +389,20 @@ export const deleteClient = async (req, res) => {
 // 🔵 6. UPLOAD MULTIPLE KYC DOCUMENTS
 export const uploadKYCDocuments = async (req, res) => {
   try {
-    const { clientId, uploadedFiles } = req.body;
+    const { clientId } = req.body;
+    const uploadedFiles = req.files; // Multer provides files in req.files
 
-    if (!clientId || !uploadedFiles || !Array.isArray(uploadedFiles)) {
+    if (!clientId) {
       return res.status(400).json({
         success: false,
-        message: "clientId and uploadedFiles array are required",
+        message: "clientId is required",
+      });
+    }
+
+    if (!uploadedFiles || uploadedFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No files uploaded. Please upload at least one KYC document",
       });
     }
 
@@ -403,36 +412,29 @@ export const uploadKYCDocuments = async (req, res) => {
     });
 
     if (!client) {
+      // If client not found, delete uploaded files
+      for (const file of uploadedFiles) {
+        await deleteUploadedFile(file.filename);
+      }
       return res.status(404).json({
         success: false,
         message: "Client not found",
       });
     }
 
-    // Validate file types and sizes (assuming these are already uploaded)
-    const allowedTypes = ["jpg", "jpeg", "png", "pdf"];
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    // Get document types from request body (if provided)
+    const types = req.body.types ? JSON.parse(req.body.types) : [];
 
-    for (const file of uploadedFiles) {
-      const fileExt = file.fileName.split(".").pop().toLowerCase();
-      if (!allowedTypes.includes(fileExt)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid file type: ${file.fileName}. Only jpg, png, pdf allowed`,
-        });
-      }
-      // Note: File size validation should be done during actual file upload
-    }
-
-    // Create KYC documents
+    // Create KYC documents in database
     const documents = await Promise.all(
       uploadedFiles.map(async (file, index) => {
+        const fileUrl = getPublicUrl(file.filename);
         return await db.kYCDocument.create({
           data: {
             docId: `DOC-${Date.now()}-${index + 1}`,
-            fileName: file.fileName,
-            fileUrl: file.fileUrl,
-            type: file.type || "other",
+            fileName: file.originalname,
+            fileUrl: fileUrl,
+            type: types[index] || 'other',
             clientId: client.id,
           },
         });
@@ -451,6 +453,7 @@ export const uploadKYCDocuments = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      message: `${documents.length} document(s) uploaded successfully`,
       uploaded: documents.map((doc) => ({
         docId: doc.docId,
         fileName: doc.fileName,
@@ -460,6 +463,16 @@ export const uploadKYCDocuments = async (req, res) => {
     });
   } catch (error) {
     logger.error("Error uploading KYC documents:", error);
+
+    // Clean up uploaded files on error
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        await deleteUploadedFile(file.filename).catch(err =>
+          logger.error(`Failed to delete file ${file.filename}:`, err)
+        );
+      }
+    }
+
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
@@ -481,7 +494,7 @@ export const deleteKYCDocument = async (req, res) => {
       });
     }
 
-    // Find and delete document
+    // Find document
     const document = await db.kYCDocument.findFirst({
       where: { docId, clientId: client.id },
     });
@@ -493,6 +506,13 @@ export const deleteKYCDocument = async (req, res) => {
       });
     }
 
+    // Extract filename from fileUrl and delete physical file
+    const filename = document.fileUrl.split('/').pop();
+    await deleteUploadedFile(filename).catch(err =>
+      logger.warn(`Could not delete physical file ${filename}:`, err)
+    );
+
+    // Delete document from database
     await db.kYCDocument.delete({
       where: { id: document.id },
     });

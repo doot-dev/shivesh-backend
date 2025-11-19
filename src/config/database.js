@@ -5,16 +5,35 @@ class DatabaseConnection {
     this.prisma = new PrismaClient({
       log: process.env.NODE_ENV === 'development' ? ['query', 'info', 'warn', 'error'] : ['error'],
       errorFormat: 'pretty',
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL,
+        },
+      },
     });
   }
 
-  async connect() {
-    try {
-      await this.prisma.$connect();
-      console.log('✅ Database connected successfully');
-    } catch (error) {
-      console.error('❌ Database connection failed:', error);
-      throw error;
+  async connect(retries = 3, delay = 5000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await this.prisma.$connect();
+        console.log('✅ Database connected successfully');
+
+        // Test the connection
+        await this.prisma.$queryRaw`SELECT 1`;
+        console.log('✅ Database connection verified');
+        return;
+      } catch (error) {
+        console.error(`❌ Database connection failed (Attempt ${attempt}/${retries}):`, error.message);
+
+        if (attempt === retries) {
+          console.error('❌ All connection attempts failed');
+          throw error;
+        }
+
+        console.log(`⏳ Retrying in ${delay / 1000} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
   }
 

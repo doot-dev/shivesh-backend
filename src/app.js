@@ -3,10 +3,16 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import morgan from 'morgan';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import 'dotenv/config';
 import logger from './helper/logger.js';
 import { databaseConnection } from './config/database.js';
 import adminApiRoutes from './app/admin/routes/index.js';
+import { swaggerUi, swaggerSpec } from './config/swagger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Create Express app
 const app = express();
@@ -15,7 +21,9 @@ const app = express();
 app.set('trust proxy', 1);
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" }
+}));
 
 // CORS configuration
 app.use(cors({
@@ -23,6 +31,9 @@ app.use(cors({
   credentials: true,
   optionsSuccessStatus: 200
 }));
+
+// Serve static files from public directory
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
 
 // Compression middleware
 app.use(compression());
@@ -37,7 +48,7 @@ app.use(morgan('combined', { stream: logger.stream }));
 // Health check endpoint
 app.get('/health', async (req, res) => {
   const dbHealth = await databaseConnection.healthCheck();
-  
+
   res.status(dbHealth.status === 'healthy' ? 200 : 503).json({
     status: dbHealth.status === 'healthy' ? 'OK' : 'SERVICE_UNAVAILABLE',
     timestamp: new Date().toISOString(),
@@ -46,6 +57,12 @@ app.get('/health', async (req, res) => {
     database: dbHealth
   });
 });
+
+// Swagger API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Shivesh API Documentation',
+}));
 
 // API Routes
 app.use('/api/v1/admin', adminApiRoutes);
@@ -62,7 +79,7 @@ app.use((req, res) => {
 
 // Global error handler
 app.use((err, req, res, next) => {
-  logger.error(`Error: ${err.message}`, { 
+  logger.error(`Error: ${err.message}`, {
     stack: err.stack,
     method: req.method,
     url: req.originalUrl,
