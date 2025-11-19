@@ -145,6 +145,46 @@ model Activity {
 }
 
 // ========================================
+// CLIENT MANAGEMENT MODELS
+// ========================================
+
+model Client {
+  id            String         @id @default(cuid())
+  clientId      String         @unique // e.g. CL-2025-0001
+  companyName   String
+  ownerName     String
+  contactNumber String
+  email         String         @unique
+  hasGST        Boolean        @default(false)
+  gstNumber     String?        @unique
+  ownerPan      String?
+  ownerAadhaar  String?
+  password      String
+  address       String         @db.Text
+  status        ClientStatus   @default(ACTIVE)
+  kycStatus     KYCStatus      @default(PENDING)
+  kycDocuments  KYCDocument[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  isDeleted     Boolean        @default(false)
+}
+
+model KYCDocument {
+  id         String   @id @default(cuid())
+  docId      String   @unique // e.g. DOC-001
+  fileName   String
+  fileUrl    String
+  type       String // passport, driver-license, utility-bill, gst, pan, etc.
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([clientId])
+}
+
+// ========================================
 // ENUMS
 // ========================================
 enum MODE {
@@ -211,6 +251,7 @@ enum EntityType {
   PROJECT
   TASK
   USER
+  CLIENT
 }
 
 enum ActivityAction {
@@ -220,4 +261,15 @@ enum ActivityAction {
   COMMENTED
   STATUS_CHANGED
   LOGGED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum KYCStatus {
+  PENDING
+  VERIFIED
+  REJECTED
 }
