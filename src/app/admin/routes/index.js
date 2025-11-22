@@ -6,6 +6,7 @@ import productRoute from "./productRoute.js"
 import vendorRoute from "./vendorRoute.js"
 import leadRoute from "./leadsRoute.js"
 import clientRoute from "./clientRoute.js"
+import projectRoute from "./projectRoute.js"
 
 
 const router = Router()
@@ -16,5 +17,6 @@ router.use('/product', productRoute)
 router.use('/vendor', vendorRoute)
 router.use('/leads', leadRoute)
 router.use('/client', clientRoute)
+router.use('/project', projectRoute)
 
 export default router 

@@ -149,24 +149,25 @@ model Activity {
 // ========================================
 
 model Client {
-  id            String         @id @default(cuid())
-  clientId      String         @unique // e.g. CL-2025-0001
+  id            String        @id @default(cuid())
+  clientId      String        @unique // e.g. CL-2025-0001
   companyName   String
   ownerName     String
   contactNumber String
-  email         String         @unique
-  hasGST        Boolean        @default(false)
-  gstNumber     String?        @unique
+  email         String        @unique
+  hasGST        Boolean       @default(false)
+  gstNumber     String?       @unique
   ownerPan      String?
   ownerAadhaar  String?
   password      String
-  address       String         @db.Text
-  status        ClientStatus   @default(ACTIVE)
-  kycStatus     KYCStatus      @default(PENDING)
+  address       String        @db.Text
+  status        ClientStatus  @default(ACTIVE)
+  kycStatus     KYCStatus     @default(PENDING)
   kycDocuments  KYCDocument[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  isDeleted     Boolean        @default(false)
+  projects      Project[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  isDeleted     Boolean       @default(false)
 }
 
 model KYCDocument {
@@ -182,6 +183,91 @@ model KYCDocument {
   updatedAt  DateTime @updatedAt
 
   @@index([clientId])
+}
+
+// ========================================
+// PROJECT MANAGEMENT MODELS
+// ========================================
+
+model Project {
+  id              String        @id @default(cuid())
+  projectId       String        @unique // e.g. P-2025-0001
+  projectName     String
+  clientId        String
+  client          Client        @relation(fields: [clientId], references: [id])
+  siteName        String
+  projectLocation String        @db.Text
+  projectManager  String?
+  status          ProjectStatus @default(ACTIVE)
+
+  // Commission details
+  commissionPersonName    String?
+  commissionAmountPerM3   Float?
+  commissionIncludeInCost Boolean @default(false)
+
+  // Credit details
+  creditAmount          Float?
+  creditResetPeriodDays Int?
+
+  projectProducts ProjectProduct[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  isDeleted       Boolean          @default(false)
+
+  @@index([clientId])
+}
+
+model TempProject {
+  id              String  @id @default(cuid())
+  tempProjectId   String  @unique // e.g. TMP-1001
+  projectName     String?
+  clientId        String?
+  siteName        String?
+  projectLocation String? @db.Text
+
+  // Commission details
+  commissionPersonName    String?
+  commissionAmountPerM3   Float?
+  commissionIncludeInCost Boolean @default(false)
+
+  // Credit details
+  creditAmount          Float?
+  creditResetPeriodDays Int?
+
+  // Products stored as JSON temporarily
+  productsData Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  expiresAt DateTime // Auto-expire after 24 hours
+}
+
+model ProjectProduct {
+  id           String                 @id @default(cuid())
+  projectId    String
+  project      Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  productName  String
+  productGrade String
+  costPrice    Float
+  vendors      ProjectProductVendor[]
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([projectId])
+}
+
+model ProjectProductVendor {
+  id               String         @id @default(cuid())
+  projectProductId String
+  projectProduct   ProjectProduct @relation(fields: [projectProductId], references: [id], onDelete: Cascade)
+  vendorId         String
+  vendorName       String
+  customPrice      Float
+  priority         VendorPriority
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([projectProductId])
 }
 
 // ========================================
@@ -201,9 +287,16 @@ enum UserRole {
 
 enum ProjectStatus {
   ACTIVE
+  INACTIVE
   COMPLETED
   ON_HOLD
   CANCELLED
+}
+
+enum VendorPriority {
+  HIGH
+  MEDIUM
+  LOW
 }
 
 enum OrderStatus {
