@@ -10,19 +10,20 @@ const startServer = async () => {
   try {
     // Connect to database
     await databaseConnection.connect();
-    
+
     // Start the server
     server = app.listen(PORT, () => {
       logger.info(`🚀 Server running on port ${PORT}`);
       logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`📍 Health check: http://localhost:${PORT}/health`);
       logger.info(`🔗 API endpoint: http://localhost:${PORT}/api/v1/admin`);
+      logger.info(`📚 Swagger docs: http://localhost:${PORT}/api-docs`);
     });
 
     // Graceful shutdown
     const gracefulShutdown = async () => {
       logger.info('Shutting down gracefully...');
-      
+
       server.close(async () => {
         try {
           await databaseConnection.disconnect();

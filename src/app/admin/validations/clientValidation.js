@@ -3,7 +3,6 @@ export const createClientValidation = {
   ownerName: "required",
   contactNumber: "required|regex:/^[0-9]{10}$/",
   email: "required|email",
-  password: "required|min:6",
   address: "required",
   hasGST: "required|boolean",
   gstNumber: "required_if:hasGST,true",

@@ -7,10 +7,19 @@ import {
 import db from "../../../config/database.js";
 import logger from "../../../helper/logger.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
-import bcrypt from "bcryptjs";
 import { getPublicUrl, deleteUploadedFile } from "../../../config/multerConfig.js";
 
-// 🔵 1. GET CLIENT LIST
+/**
+ * Retrieves a list of clients with pagination and optional filters.
+ *
+ * @param {Request} req - Express request object containing page, length, search, and status query parameters
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with:
+ *   - success {boolean}: Operation status
+ *   - data {Array}: Array of clients on success, null on failure
+ *   - total {number}: Total number of clients
+ *   - page {number}: Page number
+ */
 export const getClientList = async (req, res) => {
   try {
     const { page = 1, limit = 20, search = "", status } = req.query;
@@ -65,7 +74,11 @@ export const getClientList = async (req, res) => {
   }
 };
 
-// 🔵 2. CREATE CLIENT
+/**
+ * Create a new client
+ * @param {Object} req.body - Client data to create
+ * @returns {Promise<Object>} - Created client data
+ */
 export const createClient = async (req, res) => {
   const { err, status } = await validatorFunction(req.body, createClientValidation);
   if (!status) {
@@ -82,7 +95,6 @@ export const createClient = async (req, res) => {
       gstNumber,
       ownerPan,
       ownerAadhaar,
-      password,
       address,
       kycDocuments = [],
     } = req.body;
@@ -126,9 +138,6 @@ export const createClient = async (req, res) => {
     }
     const clientId = `CL-${currentYear}-${String(clientIdNumber).padStart(4, "0")}`;
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     // Create client with KYC documents
     const client = await db.client.create({
       data: {
@@ -141,7 +150,6 @@ export const createClient = async (req, res) => {
         gstNumber: hasGST ? gstNumber : null,
         ownerPan: ownerPan || null,
         ownerAadhaar: ownerAadhaar || null,
-        password: hashedPassword,
         address,
         kycDocuments: {
           create: kycDocuments.map((doc, index) => ({
@@ -205,8 +213,8 @@ export const getClientDetails = async (req, res) => {
       });
     }
 
-    // Remove password from response
-    const { password, id, isDeleted, ...clientData } = client;
+    // Remove internal fields from response
+    const { id, isDeleted, ...clientData } = client;
 
     return res.status(200).json({
       success: true,

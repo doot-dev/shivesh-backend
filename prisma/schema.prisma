@@ -159,7 +159,6 @@ model Client {
   gstNumber     String?       @unique
   ownerPan      String?
   ownerAadhaar  String?
-  password      String
   address       String        @db.Text
   status        ClientStatus  @default(ACTIVE)
   kycStatus     KYCStatus     @default(PENDING)
