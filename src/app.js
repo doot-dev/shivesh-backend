@@ -26,11 +26,12 @@ app.use(helmet({
 }));
 
 // CORS configuration
+
 app.use(cors({
   origin: "*",
   credentials: true,
-  optionsSuccessStatus: 200
 }));
+
 
 // Serve static files from public directory
 app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
