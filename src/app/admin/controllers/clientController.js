@@ -169,7 +169,7 @@ export const createClient = async (req, res) => {
       entityType: "CLIENT",
       entityId: client.id,
       action: "CREATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     return res.status(201).json({
@@ -326,7 +326,7 @@ export const updateClient = async (req, res) => {
       entityType: "CLIENT",
       entityId: existingClient.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     return res.status(200).json({
@@ -381,7 +381,7 @@ export const deleteClient = async (req, res) => {
       entityType: "CLIENT",
       entityId: client.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     return res.status(200).json({
@@ -504,7 +504,7 @@ export const uploadKYCDocuments = async (req, res) => {
       entityType: "CLIENT",
       entityId: client.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     return res.status(200).json({
@@ -580,7 +580,7 @@ export const deleteKYCDocument = async (req, res) => {
       entityType: "CLIENT",
       entityId: client.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     return res.status(200).json({

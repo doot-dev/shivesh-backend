@@ -6,6 +6,10 @@ import {
   updateProjectValidation,
   updateProjectCreditValidation,
   updateProjectCommissionValidation,
+  createProjectProductValidation,
+  updateProjectProductValidation,
+  createProjectProductVendorValidation,
+  updateProjectProductVendorValidation,
 } from "../validations/projectValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 
@@ -162,7 +166,7 @@ export const createProject = async (req, res) => {
       entityType: "PROJECT",
       entityId: project.id,
       action: "CREATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     logger.info(`Project created successfully: ${projectId}`);
@@ -321,7 +325,7 @@ export const updateProject = async (req, res) => {
       entityType: "PROJECT",
       entityId: existingProject.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     logger.info(`Project updated successfully: ${projectId}`);
@@ -378,7 +382,7 @@ export const deleteProject = async (req, res) => {
       entityType: "PROJECT",
       entityId: project.id,
       action: "DELETED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     logger.info(`Project deleted successfully: ${projectId}`);
@@ -456,7 +460,7 @@ export const updateProjectCredit = async (req, res) => {
       entityType: "PROJECT",
       entityId: existingProject.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     logger.info(`Project credit updated successfully: ${projectId}`);
@@ -554,7 +558,7 @@ export const updateProjectCommission = async (req, res) => {
       entityType: "PROJECT",
       entityId: existingProject.id,
       action: "UPDATED",
-      createdById: req.user?.data?.id || null,
+      createdById: Number(req.user?.data?.userId) || null,
     });
 
     logger.info(`Project commission updated successfully: ${projectId}`);
@@ -569,6 +573,764 @@ export const updateProjectCommission = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update project commission",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * =====================================================
+ * PROJECT PRODUCT CRUD OPERATIONS
+ * =====================================================
+ */
+
+/**
+ * Create a new product for a project
+ */
+export const createProjectProduct = async (req, res) => {
+  try {
+    const { err, status: validationStatus } = await validatorFunction(req.body, createProjectProductValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
+    const { projectId, productName, productGrade, costPrice } = req.body;
+
+    logger.info(`Creating product for project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Create project product
+    const projectProduct = await db.projectProduct.create({
+      data: {
+        projectId: project.id,
+        productName,
+        productGrade,
+        costPrice: parseFloat(costPrice),
+      },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Project product created",
+      description: `Product ${productName} (${productGrade}) added to project ${project.projectName}`,
+      entityType: "PROJECT",
+      entityId: projectProduct.id,
+      action: "CREATED",
+      createdById: Number(req.user?.data?.userId) || null,
+    });
+
+    logger.info(`Project product created successfully: ${projectProduct.id}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Project product created successfully",
+      data: projectProduct,
+    });
+  } catch (error) {
+    logger.error("Error creating project product:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create project product",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all products for a project
+ */
+export const getProjectProducts = async (req, res) => {
+  try {
+    const { projectId } = req.params;
+
+    logger.info(`Fetching products for project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Get all products for the project
+    const products = await db.projectProduct.findMany({
+      where: {
+        projectId: project.id,
+      },
+      include: {
+        vendors: {
+          orderBy: {
+            priority: "asc",
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    logger.info(`Retrieved ${products.length} products for project: ${projectId}`);
+
+    return res.json({
+      success: true,
+      message: "Project products fetched successfully",
+      data: products,
+    });
+  } catch (error) {
+    logger.error("Error fetching project products:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch project products",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get a single project product with details
+ */
+export const getProjectProductDetails = async (req, res) => {
+  try {
+    const { projectId, productId } = req.params;
+
+    logger.info(`Fetching product details: ${productId} for project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Get product details
+    const product = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+      include: {
+        vendors: {
+          orderBy: {
+            priority: "asc",
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            projectId: true,
+            projectName: true,
+            siteName: true,
+          },
+        },
+      },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    logger.info(`Product details retrieved: ${productId}`);
+
+    return res.json({
+      success: true,
+      message: "Product details fetched successfully",
+      data: product,
+    });
+  } catch (error) {
+    logger.error("Error fetching product details:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch product details",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update a project product
+ */
+export const updateProjectProduct = async (req, res) => {
+  try {
+    const { err, status: validationStatus } = await validatorFunction(req.body, updateProjectProductValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
+    const { productName, productGrade, costPrice, projectId, productId } = req.body;
+
+    logger.info(`Updating product: ${productId} for project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Check if product exists
+    const existingProduct = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+    });
+
+    if (!existingProduct) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Update product
+    const updatedProduct = await db.projectProduct.update({
+      where: { id: productId },
+      data: {
+        ...(productName && { productName }),
+        ...(productGrade && { productGrade }),
+        ...(costPrice && { costPrice: parseFloat(costPrice) }),
+      },
+      include: {
+        vendors: true,
+      },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Project product updated",
+      description: `Product ${updatedProduct.productName} updated in project ${project.projectName}`,
+      entityType: "PROJECT",
+      entityId: updatedProduct.id,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.userId) || null,
+    });
+
+    logger.info(`Product updated successfully: ${productId}`);
+
+    return res.json({
+      success: true,
+      message: "Product updated successfully",
+      data: updatedProduct,
+    });
+  } catch (error) {
+    logger.error("Error updating product:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update product",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Delete a project product
+ */
+export const deleteProjectProduct = async (req, res) => {
+  try {
+    const { projectId, productId } = req.params;
+
+    logger.info(`Deleting product: ${productId} from project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Check if product exists
+    const product = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Delete product (cascade will delete vendors)
+    await db.projectProduct.delete({
+      where: { id: productId },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Project product deleted",
+      description: `Product ${product.productName} deleted from project ${project.projectName}`,
+      entityType: "PROJECT",
+      entityId: product.id,
+      action: "DELETED",
+      createdById: Number(req.user?.data?.userId) || null,
+    });
+
+    logger.info(`Product deleted successfully: ${productId}`);
+
+    return res.json({
+      success: true,
+      message: "Product deleted successfully",
+    });
+  } catch (error) {
+    logger.error("Error deleting product:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete product",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * =====================================================
+ * PROJECT PRODUCT VENDOR CRUD OPERATIONS
+ * =====================================================
+ */
+
+/**
+ * Add a vendor to a project product
+ */
+export const createProjectProductVendor = async (req, res) => {
+  try {
+    const { err, status: validationStatus } = await validatorFunction(req.body, createProjectProductVendorValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
+    const { vendorId, customPrice, priority, projectId, productId } = req.body;
+
+    logger.info(`Adding vendor to product: ${productId} in project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Check if product exists
+    const product = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Check if vendor exists
+    const vendorExists = await db.vendor.findUnique({
+      where: { id: parseInt(vendorId) },
+    });
+
+    if (!vendorExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    // Create vendor
+    const projectVendor = await db.projectProductVendor.create({
+      data: {
+        projectProductId: productId,
+        vendorId: parseInt(vendorId),
+        customPrice: parseFloat(customPrice),
+        priority,
+      },
+      include: {
+        vendor: {
+          select: {
+            id: true,
+            companyName: true,
+            ownerName: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Vendor added to product",
+      description: `Vendor ${projectVendor.vendor.companyName} added to product ${product.productName} in project ${project.projectName}`,
+      entityType: "PROJECT",
+      entityId: projectVendor.id,
+      action: "CREATED",
+      createdById: Number(req.user?.data?.userId) || null,
+    });
+
+    logger.info(`Vendor added successfully: ${projectVendor.id}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Vendor added successfully",
+      data: projectVendor,
+    });
+  } catch (error) {
+    logger.error("Error adding vendor:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add vendor",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all vendors for a project product
+ */
+export const getProjectProductVendors = async (req, res) => {
+  try {
+    const { projectId, productId } = req.params;
+
+    logger.info(`Fetching vendors for product: ${productId} in project: ${projectId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Check if product exists
+    const product = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Get all vendors
+    const vendors = await db.projectProductVendor.findMany({
+      where: {
+        projectProductId: productId,
+      },
+      include: {
+        vendor: {
+          select: {
+            id: true,
+            companyName: true,
+            ownerName: true,
+            phone: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        priority: "asc",
+      },
+    });
+
+    logger.info(`Retrieved ${vendors.length} vendors for product: ${productId}`);
+
+    return res.json({
+      success: true,
+      message: "Vendors fetched successfully",
+      data: vendors,
+    });
+  } catch (error) {
+    logger.error("Error fetching vendors:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch vendors",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update a vendor for a project product
+ */
+export const updateProjectProductVendor = async (req, res) => {
+  try {
+    const { err, status: validationStatus } = await validatorFunction(req.body, updateProjectProductVendorValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
+    const { customPrice, priority, projectId, productId, vendorId } = req.body;
+
+    logger.info(`Updating vendor: ${vendorId} for product: ${productId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Check if product exists
+    const product = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Check if vendor exists
+    const existingVendor = await db.projectProductVendor.findFirst({
+      where: {
+        id: vendorId,
+        projectProductId: productId,
+      },
+    });
+
+    if (!existingVendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    // Update vendor
+    const updatedVendor = await db.projectProductVendor.update({
+      where: { id: vendorId },
+      data: {
+        ...(customPrice && { customPrice: parseFloat(customPrice) }),
+        ...(priority && { priority }),
+      },
+      include: {
+        vendor: {
+          select: {
+            id: true,
+            companyName: true,
+            ownerName: true,
+            phone: true,
+          },
+        },
+      },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Vendor updated",
+      description: `Vendor ${updatedVendor.vendor.companyName} updated for product ${product.productName}`,
+      entityType: "PROJECT",
+      entityId: updatedVendor.id,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.userId) || null,
+    });
+
+    logger.info(`Vendor updated successfully: ${vendorId}`);
+
+    return res.json({
+      success: true,
+      message: "Vendor updated successfully",
+      data: updatedVendor,
+    });
+  } catch (error) {
+    logger.error("Error updating vendor:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update vendor",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Delete a vendor from a project product
+ */
+export const deleteProjectProductVendor = async (req, res) => {
+  try {
+    const { projectId, productId, vendorId } = req.params;
+
+    logger.info(`Deleting vendor: ${vendorId} from product: ${productId}`);
+
+    // Check if project exists
+    const project = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Check if product exists
+    const product = await db.projectProduct.findFirst({
+      where: {
+        id: productId,
+        projectId: project.id,
+      },
+    });
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    // Check if vendor exists
+    const projectVendor = await db.projectProductVendor.findFirst({
+      where: {
+        id: vendorId,
+        projectProductId: productId,
+      },
+      include: {
+        vendor: {
+          select: {
+            companyName: true,
+          },
+        },
+      },
+    });
+
+    if (!projectVendor) {
+      return res.status(404).json({
+        success: false,
+        message: "Vendor not found",
+      });
+    }
+
+    // Delete vendor
+    await db.projectProductVendor.delete({
+      where: { id: vendorId },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Vendor deleted",
+      description: `Vendor ${projectVendor.vendor.companyName} deleted from product ${product.productName}`,
+      entityType: "PROJECT",
+      entityId: projectVendor.id,
+      action: "DELETED",
+      createdById: Number(req.user?.data?.userId) || null,
+    });
+
+    logger.info(`Vendor deleted successfully: ${vendorId}`);
+
+    return res.json({
+      success: true,
+      message: "Vendor deleted successfully",
+    });
+  } catch (error) {
+    logger.error("Error deleting vendor:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete vendor",
       error: error.message,
     });
   }

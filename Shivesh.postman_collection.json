@@ -1,6 +1,6 @@
 {
 	"info": {
-		"_postman_id": "2a09b25b-eded-468b-9498-3d0ff676e2c1",
+		"_postman_id": "07a5024e-82d4-48d5-b2d9-d038e9e3d66c",
 		"name": "Shivesh",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
 		"_exporter_id": "31131520"
@@ -102,7 +102,7 @@
 									},
 									"status": "OK",
 									"code": 200,
-									"_postman_previewlanguage": null,
+									"_postman_previewlanguage": "Text",
 									"header": [
 										{
 											"key": "Content-Security-Policy",
@@ -233,7 +233,7 @@
 									},
 									"status": "Bad Request",
 									"code": 400,
-									"_postman_previewlanguage": null,
+									"_postman_previewlanguage": "Text",
 									"header": [
 										{
 											"key": "Content-Security-Policy",
@@ -415,7 +415,7 @@
 									},
 									"status": "OK",
 									"code": 200,
-									"_postman_previewlanguage": null,
+									"_postman_previewlanguage": "Text",
 									"header": [
 										{
 											"key": "Content-Security-Policy",
@@ -1786,7 +1786,10 @@
 							"name": "New Request",
 							"request": {
 								"method": "GET",
-								"header": []
+								"header": [],
+								"url": {
+									"raw": ""
+								}
 							},
 							"response": []
 						}
@@ -2022,7 +2025,7 @@
 									}
 								],
 								"url": {
-									"raw": "{{base_url}}/api/v1/admin/client/kyc-list?clientId=1",
+									"raw": "{{base_url}}/api/v1/admin/client/kyc-list?clientId=cmi5ydf8g0003lgz0fse0fln4",
 									"host": [
 										"{{base_url}}"
 									],
@@ -2036,7 +2039,7 @@
 									"query": [
 										{
 											"key": "clientId",
-											"value": "1"
+											"value": "cmi5ydf8g0003lgz0fse0fln4"
 										}
 									]
 								}
@@ -2067,6 +2070,253 @@
 										"1",
 										"kyc",
 										"2"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Projects",
+					"item": [
+						{
+							"name": "Get Project List",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project/list?page=1&limit=10&search=&status=ACTIVE",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project",
+										"list"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "10"
+										},
+										{
+											"key": "search",
+											"value": ""
+										},
+										{
+											"key": "status",
+											"value": "ACTIVE"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Create Project",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"projectName\": \"New Construction Site\",\n  \"clientId\": \"CL-2025-0004\",\n  \"siteName\": \"Site A - Block A\",\n  \"address\": \"A-243, Govind Marg, Calgiri Road\",\n  \"projectLocation\": \"Jaipur, Rajasthan - 302018\",\n  \"latitude\": 26.9124,\n  \"longitude\": 75.7873\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project/create",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project",
+										"create"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Project Details",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project/PRJ-2026-0001",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project",
+										"PRJ-2026-0001"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Project",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"projectId\": \"PRJ-2026-0001\",\n  \"projectName\": \"Updated Construction Site\",\n  \"siteName\": \"Site A - Block B\",\n  \"address\": \"A-244, Govind Marg, Calgiri Road\",\n  \"projectLocation\": \"Jaipur, Rajasthan - 302018\",\n  \"latitude\": 26.9200,\n  \"longitude\": 75.7900,\n  \"status\": \"ACTIVE\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Project",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project/PRJ-2026-0002",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project",
+										"PRJ-2026-0002"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Project Credit",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"projectId\": \"PRJ-2026-0001\",\n  \"creditAmount\": 100000,\n  \"creditResetPeriodDays\": 30\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project/credit",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project",
+										"credit"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Project Commission",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"projectId\": \"PRJ-2026-0001\",\n  \"commissionPersonName\": \"Agent Name\",\n  \"commissionAmountPerM3\": 50.5,\n  \"commissionPersonMobile\": \"9876543210\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/project/commission",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"project",
+										"commission"
 									]
 								}
 							},

@@ -66,19 +66,20 @@ model Size {
 }
 
 model Vendor {
-  id          Int              @id @default(autoincrement())
-  companyName String
-  ownerName   String
-  phone       String
-  email       String?
-  address     String           @db.Text
-  gstNumber   String?          @unique
-  panNumber   String?          @unique
-  isActive    Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  isDeleted   Boolean          @default(false)
-  locations   VendorLocation[]
+  id                    Int                    @id @default(autoincrement())
+  companyName           String
+  ownerName             String
+  phone                 String
+  email                 String?
+  address               String                 @db.Text
+  gstNumber             String?                @unique
+  panNumber             String?                @unique
+  isActive              Boolean                @default(true)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  isDeleted             Boolean                @default(false)
+  locations             VendorLocation[]
+  projectProductVendors ProjectProductVendor[]
 }
 
 model VendorLocation {
@@ -262,14 +263,15 @@ model ProjectProductVendor {
   id               String         @id @default(cuid())
   projectProductId String
   projectProduct   ProjectProduct @relation(fields: [projectProductId], references: [id], onDelete: Cascade)
-  vendorId         String
-  vendorName       String
+  vendorId         Int
+  vendor           Vendor         @relation(fields: [vendorId], references: [id])
   customPrice      Float
   priority         VendorPriority
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 
   @@index([projectProductId])
+  @@index([vendorId])
 }
 
 // ========================================

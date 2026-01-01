@@ -31,3 +31,36 @@ export const updateProjectCommissionValidation = {
   commissionAmountPerM3: "sometimes|numeric|min:0",
   commissionPersonMobile: "string|sometimes",
 };
+
+// Project Product Validations
+export const createProjectProductValidation = {
+  projectId: "required|string",
+  productName: "required|string",
+  productGrade: "required|string",
+  costPrice: "required|numeric|min:0",
+};
+
+export const updateProjectProductValidation = {
+  projectId: "required|string",
+  productId: "required|string",
+  productName: "string",
+  productGrade: "string",
+  costPrice: "numeric|min:0",
+};
+
+// Project Product Vendor Validations
+export const createProjectProductVendorValidation = {
+  productId: "required|string",
+  projectId: "required|string",
+  vendorId: "required|integer",
+  customPrice: "required|numeric|min:0",
+  priority: "required|in:HIGH,MEDIUM,LOW",
+};
+
+export const updateProjectProductVendorValidation = {
+  projectId: "required|string",
+  productId: "required|string",
+  vendorId: "required|string",
+  customPrice: "numeric|min:0",
+  priority: "in:HIGH,MEDIUM,LOW",
+};
