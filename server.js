@@ -17,7 +17,6 @@ const startServer = async () => {
       logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`📍 Health check: http://localhost:${PORT}/health`);
       logger.info(`🔗 API endpoint: http://localhost:${PORT}/api/v1/admin`);
-      logger.info(`📚 Swagger docs: http://localhost:${PORT}/api-docs`);
     });
 
     // Graceful shutdown

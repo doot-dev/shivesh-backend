@@ -9,7 +9,6 @@ import 'dotenv/config';
 import logger from './helper/logger.js';
 import { databaseConnection } from './config/database.js';
 import adminApiRoutes from './app/admin/routes/index.js';
-import { swaggerUi, swaggerSpec } from './config/swagger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,12 +57,6 @@ app.get('/health', async (req, res) => {
     database: dbHealth
   });
 });
-
-// Swagger API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Shivesh API Documentation',
-}));
 
 // API Routes
 app.use('/api/v1/admin', adminApiRoutes);
