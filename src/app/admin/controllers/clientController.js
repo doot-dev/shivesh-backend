@@ -234,8 +234,8 @@ export const updateClient = async (req, res) => {
   }
 
   try {
-    const { clientId } = req.params;
     const {
+      clientId,
       companyName,
       ownerName,
       contactNumber,

@@ -17,6 +17,3 @@ productRoute.delete("/size/:id", verifyToken, productController.deleteSize);
 
 export default productRoute;
 
-productRoute.delete("/size/:id", verifyToken, productController.deleteSize);
-
-export default productRoute;    
