@@ -1,307 +1,211 @@
-import prisma from "../../../config/database.js";
-import { v4 as uuidv4 } from "uuid";
-import { encrypt, decrypt } from "../../../helper/security.js";
+import db from "../../../config/database.js";
+import logger from "../../../helper/logger.js";
 import { validatorFunction } from "../../../helper/validate.js";
 import {
-  projectStep1Validation,
-  projectStep2Validation,
-  projectStep3Validation,
-  projectStep4Validation,
+  createProjectValidation,
   updateProjectValidation,
+  updateProjectCreditValidation,
+  updateProjectCommissionValidation,
 } from "../validations/projectValidation.js";
+import { createActivityLog } from "../../../helper/activityLogger.js";
 
+/**
+ * Get list of all projects with pagination and filters
+ */
 export const getProjectList = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "", status } = req.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const pageNum = parseInt(page);
+    const limitNum = parseInt(limit);
+    const skip = (pageNum - 1) * limitNum;
 
     const where = {
-      isDeleted: 0,
+      isDeleted: false,
       ...(search && {
         OR: [
-          { projectName: { contains: search } },
-          { siteName: { contains: search } },
-          { projectLocation: { contains: search } },
-          { client: { clientName: { contains: search } } },
+          { projectName: { contains: search, mode: 'insensitive' } },
+          { siteName: { contains: search, mode: 'insensitive' } },
+          { projectLocation: { contains: search, mode: 'insensitive' } },
+          { client: { companyName: { contains: search, mode: 'insensitive' } } },
         ],
       }),
       ...(status && { status }),
     };
 
     const [projects, total] = await Promise.all([
-      prisma.project.findMany({
+      db.project.findMany({
         where,
         skip,
-        take: parseInt(limit),
+        take: limitNum,
         include: {
           client: {
             select: {
+              id: true,
               clientId: true,
-              clientName: true,
+              companyName: true,
+              ownerName: true,
             },
           },
           _count: {
             select: {
-              products: true,
+              projectProducts: true,
             },
           },
         },
         orderBy: { createdAt: "desc" },
       }),
-      prisma.project.count({ where }),
+      db.project.count({ where }),
     ]);
 
-    // Decrypt sensitive data
-    const decryptedProjects = projects.map((project) => ({
-      ...project,
-      projectId: decrypt(project.projectId),
-      clientId: decrypt(project.clientId),
-      client: {
-        ...project.client,
-        clientId: decrypt(project.client.clientId),
-      },
-    }));
+    logger.info(`Retrieved ${projects.length} projects`);
 
     return res.json({
-      status: true,
+      success: true,
       message: "Projects fetched successfully",
-      data: {
-        projects: decryptedProjects,
-        pagination: {
-          total,
-          page: parseInt(page),
-          limit: parseInt(limit),
-          totalPages: Math.ceil(total / parseInt(limit)),
-        },
+      data: projects,
+      pagination: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
       },
     });
   } catch (error) {
-    console.error("Error fetching projects:", error);
+    logger.error("Error fetching projects:", error);
     return res.status(500).json({
-      status: false,
+      success: false,
       message: "Failed to fetch projects",
       error: error.message,
     });
   }
 };
 
-export const createProjectStep1 = async (req, res) => {
+/**
+ * Create a new project with all details in one API call
+ */
+export const createProject = async (req, res) => {
   try {
-    const { projectName, clientId, siteName, projectLocation } = req.body;
-    const { status, err } = await validatorFunction(req.body, projectStep1Validation);
-    if (!status) {
-      return res.status(422).json({ status: false, message: "Validation failed", errors: err });
+    const { err, status: validationStatus } = await validatorFunction(req.body, createProjectValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
     }
+
+    const {
+      projectName,
+      clientId,
+      siteName,
+      address,
+      projectLocation,
+      latitude,
+      longitude,
+    } = req.body;
+
+    logger.info(`Creating project: ${projectName} for client ID: ${clientId}`);
+
     // Check if client exists
-    const client = await prisma.client.findUnique({
-      where: { id: clientId },
+    const client = await db.client.findFirst({
+      where: { clientId, isDeleted: false },
     });
+
     if (!client) {
-      return res.status(404).json({ status: false, message: "Client not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Client not found"
+      });
     }
-    // Create temporary project
-    const tempProjectId = uuidv4();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    const tempProject = await prisma.tempProject.create({
+
+    // Generate unique projectId
+    const projectCount = await db.project.count();
+    const projectId = `PRJ-${new Date().getFullYear()}-${String(projectCount + 1).padStart(4, '0')}`;
+
+    // Create project
+    const project = await db.project.create({
       data: {
-        tempProjectId: encrypt(tempProjectId),
+        projectId,
         projectName,
-        clientId: encrypt(clientId),
+        clientId: client.id,
         siteName,
+        address: address || null,
         projectLocation,
-        currentStep: 1,
-        expiresAt,
-      },
-    });
-    return res.json({
-      status: true,
-      message: "Project step 1 completed",
-      data: { tempProjectId, currentStep: 1, expiresAt },
-    });
-  } catch (error) {
-    console.error("Error creating project step 1:", error);
-    return res.status(500).json({ status: false, message: "Failed to create project", error: error.message });
-  }
-};
-
-export const createProjectStep2 = async (req, res) => {
-  try {
-    const { tempProjectId, commission } = req.body;
-    const { status, err } = await validatorFunction(req.body, projectStep2Validation);
-    if (!status) {
-      return res.status(422).json({ status: false, message: "Validation failed", errors: err });
-    }
-    // Find temp project
-    const tempProject = await prisma.tempProject.findUnique({
-      where: { tempProjectId: encrypt(tempProjectId) },
-    });
-    if (!tempProject) {
-      return res.status(404).json({ status: false, message: "Temporary project not found or expired" });
-    }
-    if (tempProject.currentStep !== 1) {
-      return res.status(400).json({ status: false, message: "Invalid step sequence" });
-    }
-    // Update temp project with commission data
-    await prisma.tempProject.update({
-      where: { tempProjectId: encrypt(tempProjectId) },
-      data: {
-        commissionPersonName: commission?.personName || null,
-        commissionAmountPerM3: commission?.amountPerM3 ? parseFloat(commission.amountPerM3) : null,
-        commissionIncludeInProjectCost: commission?.includeInProjectCost || false,
-        currentStep: 2,
-      },
-    });
-    return res.json({ status: true, message: "Project step 2 completed", data: { tempProjectId, currentStep: 2 } });
-  } catch (error) {
-    console.error("Error creating project step 2:", error);
-    return res.status(500).json({ status: false, message: "Failed to update project", error: error.message });
-  }
-};
-
-export const createProjectStep3 = async (req, res) => {
-  try {
-    const { tempProjectId, credit } = req.body;
-    const { status, err } = await validatorFunction(req.body, projectStep3Validation);
-    if (!status) {
-      return res.status(422).json({ status: false, message: "Validation failed", errors: err });
-    }
-    // Find temp project
-    const tempProject = await prisma.tempProject.findUnique({
-      where: { tempProjectId: encrypt(tempProjectId) },
-    });
-    if (!tempProject) {
-      return res.status(404).json({ status: false, message: "Temporary project not found or expired" });
-    }
-    if (tempProject.currentStep !== 2) {
-      return res.status(400).json({ status: false, message: "Invalid step sequence" });
-    }
-    // Update temp project with credit data
-    await prisma.tempProject.update({
-      where: { tempProjectId: encrypt(tempProjectId) },
-      data: {
-        creditAmount: parseFloat(credit.amount),
-        creditResetPeriodDays: parseInt(credit.resetPeriodDays),
-        currentStep: 3,
-      },
-    });
-    return res.json({ status: true, message: "Project step 3 completed", data: { tempProjectId, currentStep: 3 } });
-  } catch (error) {
-    console.error("Error creating project step 3:", error);
-    return res.status(500).json({ status: false, message: "Failed to update project", error: error.message });
-  }
-};
-
-export const createProjectStep4 = async (req, res) => {
-  try {
-    const { tempProjectId, products } = req.body;
-    const { status, err } = await validatorFunction(req.body, projectStep4Validation);
-    if (!status) {
-      return res.status(422).json({ status: false, message: "Validation failed", errors: err });
-    }
-    // Find temp project
-    const tempProject = await prisma.tempProject.findUnique({
-      where: { tempProjectId: encrypt(tempProjectId) },
-    });
-    if (!tempProject) {
-      return res.status(404).json({ status: false, message: "Temporary project not found or expired" });
-    }
-    if (tempProject.currentStep !== 3) {
-      return res.status(400).json({ status: false, message: "Invalid step sequence" });
-    }
-    // Create actual project
-    const projectId = uuidv4();
-    const project = await prisma.project.create({
-      data: {
-        projectId: encrypt(projectId),
-        projectName: tempProject.projectName,
-        clientId: tempProject.clientId,
-        siteName: tempProject.siteName,
-        projectLocation: tempProject.projectLocation,
-        commissionPersonName: tempProject.commissionPersonName,
-        commissionAmountPerM3: tempProject.commissionAmountPerM3,
-        commissionIncludeInProjectCost: tempProject.commissionIncludeInProjectCost,
-        creditAmount: tempProject.creditAmount,
-        creditResetPeriodDays: tempProject.creditResetPeriodDays,
+        latitude: latitude ? parseFloat(latitude) : null,
+        longitude: longitude ? parseFloat(longitude) : null,
         status: "ACTIVE",
-        products: {
-          create: products.map((product) => ({
-            projectProductId: encrypt(uuidv4()),
-            productName: product.productName,
-            productGrade: product.productGrade,
-            costPrice: parseFloat(product.costPrice),
-            vendors: {
-              create: product.vendors.map((vendor) => ({
-                projectProductVendorId: encrypt(uuidv4()),
-                vendorId: encrypt(vendor.vendorId),
-                vendorName: vendor.vendorName,
-                customPrice: parseFloat(vendor.customPrice),
-                priority: vendor.priority,
-              })),
-            },
-          })),
-        },
       },
       include: {
         client: {
           select: {
+            id: true,
             clientId: true,
-            clientName: true,
+            companyName: true,
+            ownerName: true,
           },
         },
-        products: {
+        projectProducts: {
           include: {
-            vendors: true,
+            vendors: {
+              orderBy: { priority: 'asc' },
+            },
           },
         },
       },
     });
-    // Delete temp project
-    await prisma.tempProject.delete({ where: { tempProjectId: encrypt(tempProjectId) } });
-    // Decrypt response
-    const decryptedProject = {
-      ...project,
-      projectId: decrypt(project.projectId),
-      clientId: decrypt(project.clientId),
-      client: {
-        ...project.client,
-        clientId: decrypt(project.client.clientId),
-      },
-      products: project.products.map((product) => ({
-        ...product,
-        projectProductId: decrypt(product.projectProductId),
-        vendors: product.vendors.map((vendor) => ({
-          ...vendor,
-          projectProductVendorId: decrypt(vendor.projectProductVendorId),
-          vendorId: decrypt(vendor.vendorId),
-        })),
-      })),
-    };
-    return res.json({ status: true, message: "Project created successfully", data: decryptedProject });
+
+    // Log activity
+    await createActivityLog({
+      title: "Project created",
+      description: `Project ${projectName} (${projectId}) was created`,
+      entityType: "PROJECT",
+      entityId: project.id,
+      action: "CREATED",
+      createdById: req.user?.data?.id || null,
+    });
+
+    logger.info(`Project created successfully: ${projectId}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "Project created successfully",
+      data: project,
+    });
   } catch (error) {
-    console.error("Error creating project step 4:", error);
-    return res.status(500).json({ status: false, message: "Failed to create project", error: error.message });
+    logger.error("Error creating project:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create project",
+      error: error.message,
+    });
   }
 };
 
+/**
+ * Get project details by ID
+ */
 export const getProjectDetails = async (req, res) => {
   try {
     const { projectId } = req.params;
 
-    const project = await prisma.project.findUnique({
+    const project = await db.project.findFirst({
       where: {
-        projectId: encrypt(projectId),
-        isDeleted: 0,
+        projectId,
+        isDeleted: false,
       },
       include: {
         client: {
           select: {
+            id: true,
             clientId: true,
-            clientName: true,
+            companyName: true,
+            ownerName: true,
+            contactNumber: true,
             email: true,
-            phoneNumber: true,
           },
         },
-        products: {
+        projectProducts: {
           include: {
             vendors: {
               orderBy: {
@@ -315,221 +219,356 @@ export const getProjectDetails = async (req, res) => {
 
     if (!project) {
       return res.status(404).json({
-        status: false,
+        success: false,
         message: "Project not found",
       });
     }
 
-    // Decrypt sensitive data
-    const decryptedProject = {
-      ...project,
-      projectId: decrypt(project.projectId),
-      clientId: decrypt(project.clientId),
-      client: {
-        ...project.client,
-        clientId: decrypt(project.client.clientId),
-      },
-      products: project.products.map((product) => ({
-        ...product,
-        projectProductId: decrypt(product.projectProductId),
-        vendors: product.vendors.map((vendor) => ({
-          ...vendor,
-          projectProductVendorId: decrypt(vendor.projectProductVendorId),
-          vendorId: decrypt(vendor.vendorId),
-        })),
-      })),
-    };
+    logger.info(`Retrieved project details: ${projectId}`);
 
     return res.json({
-      status: true,
+      success: true,
       message: "Project details fetched successfully",
-      data: decryptedProject,
+      data: project,
     });
   } catch (error) {
-    console.error("Error fetching project details:", error);
+    logger.error("Error fetching project details:", error);
     return res.status(500).json({
-      status: false,
+      success: false,
       message: "Failed to fetch project details",
       error: error.message,
     });
   }
 };
 
+/**
+ * Update project with all details in one API call
+ */
 export const updateProject = async (req, res) => {
   try {
-    const { projectId } = req.params;
+    const { err, status: validationStatus } = await validatorFunction(req.body, updateProjectValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
     const {
+      projectId,
       projectName,
       siteName,
+      address,
       projectLocation,
-      projectManager,
+      latitude,
+      longitude,
       status,
-      commission,
-      credit,
-      products,
     } = req.body;
-    const { status: valid, err } = await validatorFunction(req.body, updateProjectValidation);
-    if (!valid) {
-      return res.status(422).json({ status: false, message: "Validation failed", errors: err });
-    }
+
+    logger.info(`Updating project: ${projectId}`);
+
     // Check if project exists
-    const existingProject = await prisma.project.findUnique({
+    const existingProject = await db.project.findFirst({
       where: {
-        projectId: encrypt(projectId),
-        isDeleted: 0,
+        projectId,
+        isDeleted: false,
       },
     });
+
     if (!existingProject) {
-      return res.status(404).json({ status: false, message: "Project not found" });
-    }
-    // Prepare update data
-    const updateData = {
-      ...(projectName && { projectName }),
-      ...(siteName && { siteName }),
-      ...(projectLocation && { projectLocation }),
-      ...(projectManager && { projectManager }),
-      ...(status && { status }),
-      ...(commission && {
-        commissionPersonName: commission.personName,
-        commissionAmountPerM3: commission.amountPerM3 ? parseFloat(commission.amountPerM3) : null,
-        commissionIncludeInProjectCost: commission.includeInProjectCost,
-      }),
-      ...(credit && {
-        creditAmount: parseFloat(credit.amount),
-        creditResetPeriodDays: parseInt(credit.resetPeriodDays),
-      }),
-    };
-    // Update project
-    const updatedProject = await prisma.project.update({
-      where: { projectId: encrypt(projectId) },
-      data: updateData,
-    });
-    // Update products if provided
-    if (products && products.length > 0) {
-      // Delete existing products and vendors
-      await prisma.projectProduct.deleteMany({ where: { projectId: encrypt(projectId) } });
-      // Create new products with vendors
-      await prisma.projectProduct.createMany({
-        data: products.map((product) => ({
-          projectProductId: encrypt(uuidv4()),
-          projectId: encrypt(projectId),
-          productName: product.productName,
-          productGrade: product.productGrade,
-          costPrice: parseFloat(product.costPrice),
-        })),
+      return res.status(404).json({
+        success: false,
+        message: "Project not found"
       });
-      // Create vendors for each product
-      for (const product of products) {
-        const projectProduct = await prisma.projectProduct.findFirst({
-          where: {
-            projectId: encrypt(projectId),
-            productName: product.productName,
-            productGrade: product.productGrade,
-          },
-        });
-        if (projectProduct && product.vendors) {
-          await prisma.projectProductVendor.createMany({
-            data: product.vendors.map((vendor) => ({
-              projectProductVendorId: encrypt(uuidv4()),
-              projectProductId: projectProduct.projectProductId,
-              vendorId: encrypt(vendor.vendorId),
-              vendorName: vendor.vendorName,
-              customPrice: parseFloat(vendor.customPrice),
-              priority: vendor.priority,
-            })),
-          });
-        }
-      }
     }
-    // Fetch updated project with all relations
-    const project = await prisma.project.findUnique({
-      where: { projectId: encrypt(projectId) },
+
+    // Update project
+    const updatedProject = await db.project.update({
+      where: { id: existingProject.id },
+      data: {
+        ...(projectName && { projectName }),
+        ...(siteName && { siteName }),
+        ...(address !== undefined && { address }),
+        ...(projectLocation && { projectLocation }),
+        ...(latitude !== undefined && { latitude: latitude ? parseFloat(latitude) : null }),
+        ...(longitude !== undefined && { longitude: longitude ? parseFloat(longitude) : null }),
+        ...(status && { status }),
+      },
       include: {
         client: {
-          select: { clientId: true, clientName: true },
+          select: {
+            id: true,
+            clientId: true,
+            companyName: true,
+            ownerName: true,
+          },
         },
-        products: { include: { vendors: true } },
+        projectProducts: {
+          include: {
+            vendors: {
+              orderBy: { priority: 'asc' },
+            },
+          },
+        },
       },
     });
-    // Decrypt response
-    const decryptedProject = {
-      ...project,
-      projectId: decrypt(project.projectId),
-      clientId: decrypt(project.clientId),
-      client: {
-        ...project.client,
-        clientId: decrypt(project.client.clientId),
-      },
-      products: project.products.map((product) => ({
-        ...product,
-        projectProductId: decrypt(product.projectProductId),
-        vendors: product.vendors.map((vendor) => ({
-          ...vendor,
-          projectProductVendorId: decrypt(vendor.projectProductVendorId),
-          vendorId: decrypt(vendor.vendorId),
-        })),
-      })),
-    };
-    return res.json({ status: true, message: "Project updated successfully", data: decryptedProject });
+    // Log activity
+    await createActivityLog({
+      title: "Project updated",
+      description: `Project ${existingProject.projectName} (${projectId}) was updated`,
+      entityType: "PROJECT",
+      entityId: existingProject.id,
+      action: "UPDATED",
+      createdById: req.user?.data?.id || null,
+    });
+
+    logger.info(`Project updated successfully: ${projectId}`);
+
+    return res.json({
+      success: true,
+      message: "Project updated successfully",
+      data: updatedProject,
+    });
   } catch (error) {
-    console.error("Error updating project:", error);
-    return res.status(500).json({ status: false, message: "Failed to update project", error: error.message });
+    logger.error("Error updating project:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update project",
+      error: error.message,
+    });
   }
 };
 
+/**
+ * Delete project (soft delete)
+ */
 export const deleteProject = async (req, res) => {
   try {
     const { projectId } = req.params;
 
     // Check if project exists
-    const project = await prisma.project.findUnique({
+    const project = await db.project.findFirst({
       where: {
-        projectId: encrypt(projectId),
-        isDeleted: 0,
+        projectId,
+        isDeleted: false,
       },
     });
 
     if (!project) {
       return res.status(404).json({
-        status: false,
+        success: false,
         message: "Project not found",
       });
     }
 
-    // TODO: Check if project has any active orders
-    // Uncomment when Order model is implemented
-    // const activeOrders = await prisma.order.count({
-    //   where: {
-    //     projectId: encrypt(projectId),
-    //     status: { in: ["PENDING", "CONFIRMED", "IN_PROGRESS"] },
-    //   },
-    // });
-    //
-    // if (activeOrders > 0) {
-    //   return res.status(400).json({
-    //     status: false,
-    //     message: "Cannot delete project with active orders",
-    //   });
-    // }
-
     // Soft delete project
-    await prisma.project.update({
-      where: { projectId: encrypt(projectId) },
+    await db.project.update({
+      where: { id: project.id },
       data: {
-        isDeleted: 1,
-        deletedAt: new Date(),
+        isDeleted: true,
       },
     });
 
+    // Log activity
+    await createActivityLog({
+      title: "Project deleted",
+      description: `Project ${project.projectName} (${projectId}) was deleted`,
+      entityType: "PROJECT",
+      entityId: project.id,
+      action: "DELETED",
+      createdById: req.user?.data?.id || null,
+    });
+
+    logger.info(`Project deleted successfully: ${projectId}`);
+
     return res.json({
-      status: true,
+      success: true,
       message: "Project deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting project:", error);
+    logger.error("Error deleting project:", error);
     return res.status(500).json({
-      status: false,
+      success: false,
       message: "Failed to delete project",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update project credit details
+ */
+export const updateProjectCredit = async (req, res) => {
+  try {
+    const { err, status: validationStatus } = await validatorFunction(req.body, updateProjectCreditValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
+    const { creditAmount, creditResetPeriodDays, projectId } = req.body;
+
+    logger.info(`Updating credit for project: ${projectId}`);
+
+    // Check if project exists
+    const existingProject = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!existingProject) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+    // Update project credit
+    const updatedProject = await db.project.update({
+      where: { id: existingProject.id },
+      data: {
+        creditAmount: creditAmount !== undefined ? (creditAmount ? parseFloat(creditAmount) : null) : existingProject.creditAmount,
+        creditResetPeriodDays: creditResetPeriodDays !== undefined ? (creditResetPeriodDays ? parseInt(creditResetPeriodDays) : null) : existingProject.creditResetPeriodDays,
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            clientId: true,
+            companyName: true,
+            ownerName: true,
+          },
+        },
+      },
+    });
+
+    // Log activity
+    await createActivityLog({
+      title: "Project credit updated",
+      description: `Credit details updated for project ${existingProject.projectName} (${projectId})`,
+      entityType: "PROJECT",
+      entityId: existingProject.id,
+      action: "UPDATED",
+      createdById: req.user?.data?.id || null,
+    });
+
+    logger.info(`Project credit updated successfully: ${projectId}`);
+
+    return res.json({
+      success: true,
+      message: "Project credit updated successfully",
+      data: updatedProject,
+    });
+  } catch (error) {
+    logger.error("Error updating project credit:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update project credit",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update project commission details
+ * @param {Object} req.body - Request body containing updated commission details
+ * @param {Response} res - Response object
+ * @returns {Promise<Response>} - Promise resolving to a Response object
+ */
+export const updateProjectCommission = async (req, res) => {
+  try {
+    const { err, status: validationStatus } = await validatorFunction(req.body, updateProjectCommissionValidation);
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err
+      });
+    }
+
+    const { commissionPersonName, commissionAmountPerM3, commissionPersonMobile, projectId } = req.body;
+
+    logger.info(`Updating commission for project: ${projectId}`);
+
+    // Check if project exists
+    const existingProject = await db.project.findFirst({
+      where: {
+        projectId,
+        isDeleted: false,
+      },
+    });
+
+    if (!existingProject) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found",
+      });
+    }
+
+    // Update project commission
+    const updatedProject = await db.project.update({
+      where: { id: existingProject.id },
+      data: {
+        /**
+         * Commission person name
+         * @type {string|null}
+         */
+        commissionPersonName: commissionPersonName !== undefined ? (commissionPersonName || null) : existingProject.commissionPersonName,
+        /**
+         * Commission amount per cubic meter
+         * @type {number|null}
+         */
+        commissionAmountPerM3: commissionAmountPerM3 !== undefined ? (commissionAmountPerM3 ? parseFloat(commissionAmountPerM3) : null) : existingProject.commissionAmountPerM3,
+        /**
+         * Commission person mobile number
+         * @type {string|null}
+         */
+        commissionPersonMobile: commissionPersonMobile !== undefined ? (commissionPersonMobile || null) : existingProject.commissionPersonMobile,
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            clientId: true,
+            companyName: true,
+            ownerName: true,
+          },
+        },
+      },
+    });
+
+    logger.info(`token user ${JSON.stringify(req.user)}`);
+
+    // Log activity
+    await createActivityLog({
+      title: "Project commission updated",
+      description: `Commission details updated for project ${existingProject.projectName} (${projectId})`,
+      entityType: "PROJECT",
+      entityId: existingProject.id,
+      action: "UPDATED",
+      createdById: req.user?.data?.id || null,
+    });
+
+    logger.info(`Project commission updated successfully: ${projectId}`);
+
+    return res.json({
+      success: true,
+      message: "Project commission updated successfully",
+      data: updatedProject,
+    });
+  } catch (error) {
+    logger.error("Error updating project commission:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update project commission",
       error: error.message,
     });
   }

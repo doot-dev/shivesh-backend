@@ -196,13 +196,16 @@ model Project {
   client          Client        @relation(fields: [clientId], references: [id])
   siteName        String
   projectLocation String        @db.Text
+  latitude        Float?
+  longitude       Float?
+  address         String?       @db.Text
   projectManager  String?
   status          ProjectStatus @default(ACTIVE)
 
   // Commission details
-  commissionPersonName    String?
-  commissionAmountPerM3   Float?
-  commissionIncludeInCost Boolean @default(false)
+  commissionPersonName   String?
+  commissionAmountPerM3  Float?
+  commissionPersonMobile String?
 
   // Credit details
   creditAmount          Float?

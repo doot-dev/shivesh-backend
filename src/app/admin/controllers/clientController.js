@@ -250,7 +250,7 @@ export const updateClient = async (req, res) => {
 
     // Check if client exists
     const existingClient = await db.client.findFirst({
-      where: { id: clientId, isDeleted: false },
+      where: { clientId, isDeleted: false },
     });
 
     if (!existingClient) {
@@ -346,7 +346,7 @@ export const deleteClient = async (req, res) => {
 
     // Find client
     const client = await db.client.findFirst({
-      where: { id: clientId, isDeleted: false },
+      where: { clientId, isDeleted: false },
     });
 
     if (!client) {
@@ -408,7 +408,7 @@ export const getKYCList = async (req, res) => {
 
     // Find client
     const client = await db.client.findFirst({
-      where: { id: clientId, isDeleted: false },
+      where: { clientId, isDeleted: false },
     });
     logger.info("Client fetched for KYC list:", client);
     if (!client) {
@@ -464,7 +464,7 @@ export const uploadKYCDocuments = async (req, res) => {
 
     // Find client
     const client = await db.client.findFirst({
-      where: { id: clientId, isDeleted: false },
+      where: { clientId, isDeleted: false },
     });
 
     if (!client) {
@@ -540,7 +540,7 @@ export const deleteKYCDocument = async (req, res) => {
 
     // Find client
     const client = await db.client.findFirst({
-      where: { id: clientId, isDeleted: false },
+      where: { clientId, isDeleted: false },
     });
 
     if (!client) {
