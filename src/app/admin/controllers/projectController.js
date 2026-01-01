@@ -94,7 +94,7 @@ export const createProjectStep1 = async (req, res) => {
     }
     // Check if client exists
     const client = await prisma.client.findUnique({
-      where: { clientId: encrypt(clientId) },
+      where: { id: clientId },
     });
     if (!client) {
       return res.status(404).json({ status: false, message: "Client not found" });

@@ -1,0 +1,2128 @@
+{
+	"info": {
+		"_postman_id": "2a09b25b-eded-468b-9498-3d0ff676e2c1",
+		"name": "Shivesh",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "31131520"
+	},
+	"item": [
+		{
+			"name": "Admin",
+			"item": [
+				{
+					"name": "Users",
+					"item": [
+						{
+							"name": "Reset Password",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "U2FsdGVkX1+GpqZR7Vhr0UA3657XosNEXU6Jedq8hmXTejb8IuXDNXHQhgaZL3DcLn24c5mcSgtIksloargIdQd1tC3uCOjdPV/P773cGwCqTlNtPH0JPpbIWPih/6xN4IomXmNmQAORbf2Lm7tbUMj1f/JTu5lsYk9JJJb/KXr9i7PhBRgAa8HQGRTpt+JkiDRXoelNRTM7Eix6ol8rv9YLPscy8fEDyR2q2iW990HOtPbqdHQywYdh2ftDORcMtOroZ4fHssXSD8q8FTUo+cqWSQTSg89KRBkljtxP/CU=",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": ""
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"id\": 18,\n    \"oldPassword\": \"12345223\",\n    \"newPassword\": \"1234522\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/user/reset-password",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user",
+										"reset-password"
+									]
+								},
+								"description": "Generated from cURL: curl -X PUT \"http://localhost:3001/api/v1/admin/user\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer <YOUR_JWT_TOKEN>\" \\\n  -d '{\n    \"id\": 1,\n    \"name\": \"Updated Name\",\n    \"employeeId\": \"EMP001\",\n    \"userName\": \"updatedusername\",\n    \"password\": \"NewPassword123!\",\n    \"role\": \"admin\",\n    \"menuAccess\": [\"dashboard\", \"users\", \"settings\"]\n  }'"
+							},
+							"response": [
+								{
+									"name": "Reset Password",
+									"originalRequest": {
+										"method": "PUT",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Authorization",
+												"value": ""
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"id\": 18,\n    \"oldPassword\": \"1234522\",\n    \"newPassword\": \"1234522\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://localhost:3001/api/v1/admin/user/reset-password",
+											"protocol": "http",
+											"host": [
+												"localhost"
+											],
+											"port": "3001",
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"user",
+												"reset-password"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": null,
+									"header": [
+										{
+											"key": "Content-Security-Policy",
+											"value": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
+										},
+										{
+											"key": "Cross-Origin-Opener-Policy",
+											"value": "same-origin"
+										},
+										{
+											"key": "Cross-Origin-Resource-Policy",
+											"value": "same-origin"
+										},
+										{
+											"key": "Origin-Agent-Cluster",
+											"value": "?1"
+										},
+										{
+											"key": "Referrer-Policy",
+											"value": "no-referrer"
+										},
+										{
+											"key": "Strict-Transport-Security",
+											"value": "max-age=31536000; includeSubDomains"
+										},
+										{
+											"key": "X-Content-Type-Options",
+											"value": "nosniff"
+										},
+										{
+											"key": "X-DNS-Prefetch-Control",
+											"value": "off"
+										},
+										{
+											"key": "X-Download-Options",
+											"value": "noopen"
+										},
+										{
+											"key": "X-Frame-Options",
+											"value": "SAMEORIGIN"
+										},
+										{
+											"key": "X-Permitted-Cross-Domain-Policies",
+											"value": "none"
+										},
+										{
+											"key": "X-XSS-Protection",
+											"value": "0"
+										},
+										{
+											"key": "Access-Control-Allow-Origin",
+											"value": "*"
+										},
+										{
+											"key": "Access-Control-Allow-Credentials",
+											"value": "true"
+										},
+										{
+											"key": "Content-Type",
+											"value": "application/json; charset=utf-8"
+										},
+										{
+											"key": "Content-Length",
+											"value": "68"
+										},
+										{
+											"key": "ETag",
+											"value": "W/\"44-kUSwhfxhPM/5wpVY5srytwqbeSk\""
+										},
+										{
+											"key": "Vary",
+											"value": "Accept-Encoding"
+										},
+										{
+											"key": "Date",
+											"value": "Tue, 30 Sep 2025 18:47:41 GMT"
+										},
+										{
+											"key": "Connection",
+											"value": "keep-alive"
+										},
+										{
+											"key": "Keep-Alive",
+											"value": "timeout=5"
+										}
+									],
+									"cookie": [],
+									"body": "{\n    \"success\": true,\n    \"message\": \"Password reset successfully\",\n    \"data\": null\n}"
+								},
+								{
+									"name": "Reset Password",
+									"originalRequest": {
+										"method": "PUT",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Authorization",
+												"value": ""
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"id\": 18,\n    \"oldPassword\": \"1234526\",\n    \"newPassword\": \"1234522\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://localhost:3001/api/v1/admin/user/reset-password",
+											"protocol": "http",
+											"host": [
+												"localhost"
+											],
+											"port": "3001",
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"user",
+												"reset-password"
+											]
+										}
+									},
+									"status": "Bad Request",
+									"code": 400,
+									"_postman_previewlanguage": null,
+									"header": [
+										{
+											"key": "Content-Security-Policy",
+											"value": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
+										},
+										{
+											"key": "Cross-Origin-Opener-Policy",
+											"value": "same-origin"
+										},
+										{
+											"key": "Cross-Origin-Resource-Policy",
+											"value": "same-origin"
+										},
+										{
+											"key": "Origin-Agent-Cluster",
+											"value": "?1"
+										},
+										{
+											"key": "Referrer-Policy",
+											"value": "no-referrer"
+										},
+										{
+											"key": "Strict-Transport-Security",
+											"value": "max-age=31536000; includeSubDomains"
+										},
+										{
+											"key": "X-Content-Type-Options",
+											"value": "nosniff"
+										},
+										{
+											"key": "X-DNS-Prefetch-Control",
+											"value": "off"
+										},
+										{
+											"key": "X-Download-Options",
+											"value": "noopen"
+										},
+										{
+											"key": "X-Frame-Options",
+											"value": "SAMEORIGIN"
+										},
+										{
+											"key": "X-Permitted-Cross-Domain-Policies",
+											"value": "none"
+										},
+										{
+											"key": "X-XSS-Protection",
+											"value": "0"
+										},
+										{
+											"key": "Access-Control-Allow-Origin",
+											"value": "*"
+										},
+										{
+											"key": "Access-Control-Allow-Credentials",
+											"value": "true"
+										},
+										{
+											"key": "Content-Type",
+											"value": "application/json; charset=utf-8"
+										},
+										{
+											"key": "Content-Length",
+											"value": "69"
+										},
+										{
+											"key": "ETag",
+											"value": "W/\"45-iRs2aw1k0EtCAbji4U7W2chn79Q\""
+										},
+										{
+											"key": "Vary",
+											"value": "Accept-Encoding"
+										},
+										{
+											"key": "Date",
+											"value": "Tue, 30 Sep 2025 18:47:54 GMT"
+										},
+										{
+											"key": "Connection",
+											"value": "keep-alive"
+										},
+										{
+											"key": "Keep-Alive",
+											"value": "timeout=5"
+										}
+									],
+									"cookie": [],
+									"body": "{\n    \"success\": false,\n    \"message\": \"Old password does not match\",\n    \"data\": null\n}"
+								}
+							]
+						},
+						{
+							"name": "Update User",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "U2FsdGVkX1+GpqZR7Vhr0UA3657XosNEXU6Jedq8hmXTejb8IuXDNXHQhgaZL3DcLn24c5mcSgtIksloargIdQd1tC3uCOjdPV/P773cGwCqTlNtPH0JPpbIWPih/6xN4IomXmNmQAORbf2Lm7tbUMj1f/JTu5lsYk9JJJb/KXr9i7PhBRgAa8HQGRTpt+JkiDRXoelNRTM7Eix6ol8rv9YLPscy8fEDyR2q2iW990HOtPbqdHQywYdh2ftDORcMtOroZ4fHssXSD8q8FTUo+cqWSQTSg89KRBkljtxP/CU=",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Authorization",
+										"value": ""
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"id\": 3,\n    \"name\": \"Updated Name\",\n    \"employeeId\": \"EMP002\",\n    \"userName\": \"test2\",\n    \"status\":true,\n     \"role\": \"ADMIN\",\n    \"menuAccess\": [\n        1,\n        2,\n        3\n    ]\n  }",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:3001/api/v1/admin/user",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "3001",
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user"
+									]
+								},
+								"description": "Generated from cURL: curl -X PUT \"http://localhost:3001/api/v1/admin/user\" \\\n  -H \"Content-Type: application/json\" \\\n  -H \"Authorization: Bearer <YOUR_JWT_TOKEN>\" \\\n  -d '{\n    \"id\": 1,\n    \"name\": \"Updated Name\",\n    \"employeeId\": \"EMP001\",\n    \"userName\": \"updatedusername\",\n    \"password\": \"NewPassword123!\",\n    \"role\": \"admin\",\n    \"menuAccess\": [\"dashboard\", \"users\", \"settings\"]\n  }'"
+							},
+							"response": [
+								{
+									"name": "Update response",
+									"originalRequest": {
+										"method": "PUT",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Authorization",
+												"value": ""
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"id\": 3,\n    \"name\": \"Updated Name\",\n    \"employeeId\": \"EMP002\",\n    \"userName\": \"test2\",\n    \"status\":true,\n     \"role\": \"ADMIN\",\n    \"menuAccess\": [\n        1,\n        2,\n        3\n    ]\n  }",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://localhost:3001/api/v1/admin/user",
+											"protocol": "http",
+											"host": [
+												"localhost"
+											],
+											"port": "3001",
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"user"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": null,
+									"header": [
+										{
+											"key": "Content-Security-Policy",
+											"value": "default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src 'self';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests"
+										},
+										{
+											"key": "Cross-Origin-Opener-Policy",
+											"value": "same-origin"
+										},
+										{
+											"key": "Cross-Origin-Resource-Policy",
+											"value": "same-origin"
+										},
+										{
+											"key": "Origin-Agent-Cluster",
+											"value": "?1"
+										},
+										{
+											"key": "Referrer-Policy",
+											"value": "no-referrer"
+										},
+										{
+											"key": "Strict-Transport-Security",
+											"value": "max-age=31536000; includeSubDomains"
+										},
+										{
+											"key": "X-Content-Type-Options",
+											"value": "nosniff"
+										},
+										{
+											"key": "X-DNS-Prefetch-Control",
+											"value": "off"
+										},
+										{
+											"key": "X-Download-Options",
+											"value": "noopen"
+										},
+										{
+											"key": "X-Frame-Options",
+											"value": "SAMEORIGIN"
+										},
+										{
+											"key": "X-Permitted-Cross-Domain-Policies",
+											"value": "none"
+										},
+										{
+											"key": "X-XSS-Protection",
+											"value": "0"
+										},
+										{
+											"key": "Access-Control-Allow-Origin",
+											"value": "*"
+										},
+										{
+											"key": "Access-Control-Allow-Credentials",
+											"value": "true"
+										},
+										{
+											"key": "Content-Type",
+											"value": "application/json; charset=utf-8"
+										},
+										{
+											"key": "Content-Length",
+											"value": "356"
+										},
+										{
+											"key": "ETag",
+											"value": "W/\"164-1fswNBW+E0yGkrUhZ36n1QwCNVw\""
+										},
+										{
+											"key": "Vary",
+											"value": "Accept-Encoding"
+										},
+										{
+											"key": "Date",
+											"value": "Tue, 30 Sep 2025 18:18:59 GMT"
+										},
+										{
+											"key": "Connection",
+											"value": "keep-alive"
+										},
+										{
+											"key": "Keep-Alive",
+											"value": "timeout=5"
+										}
+									],
+									"cookie": [],
+									"body": "{\n    \"success\": true,\n    \"message\": \"User updated successfully\",\n    \"data\": {\n        \"id\": 3,\n        \"name\": \"Updated Name\",\n        \"employeeId\": \"EMP002\",\n        \"userName\": \"test2\",\n        \"password\": \"U2FsdGVkX1/wL4h4ZH/mqPEtc/P/oSlyDc1zJMELMgE=\",\n        \"role\": \"ADMIN\",\n        \"status\": true,\n        \"createdAt\": \"2025-09-23T20:23:10.952Z\",\n        \"updatedAt\": \"2025-09-30T18:18:59.428Z\",\n        \"isDeleted\": false,\n        \"lastLoginAt\": null,\n        \"menuAccess\": [\n            1,\n            2,\n            3\n        ]\n    }\n}"
+								}
+							]
+						},
+						{
+							"name": "Create User",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "U2FsdGVkX18/MeYnmJw9cZZFSqoOruTq6E69gwrRzwOVGIqwRXA85tWTBJuHDv7KpFQb3suEiyXVc7bH+sf55+MmBB4wgQNNKHmnZ805hg5A+KmIvtzRHjWdS/V3CHhIQ7XtukXXjL2+LiPlFqTa1fVO/dEdyCx5cxog1/wETyTCsiWag5Sf2i4OauA0bqhUG5lBSlz58TnjXNNJjJbwY59ir4Jt9qcAuSLCj7pHgTJnQivCoB2QFj/liA5kS4vejywHwvMD3YTq2YLvmquDi3EzvvOAMURRDL8plI6rR5ozWrpVDip0vQj+digDUTR74NZJeMuIr0ZNteWy4D4khIvbZlPoR6TCjKaPUHWCPCs=",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [
+									{
+										"key": "authorization",
+										"value": "U2FsdGVkX18/MeYnmJw9cZZFSqoOruTq6E69gwrRzwOVGIqwRXA85tWTBJuHDv7KpFQb3suEiyXVc7bH+sf55+MmBB4wgQNNKHmnZ805hg5A+KmIvtzRHjWdS/V3CHhIQ7XtukXXjL2+LiPlFqTa1fVO/dEdyCx5cxog1/wETyTCsiWag5Sf2i4OauA0bqhUG5lBSlz58TnjXNNJjJbwY59ir4Jt9qcAuSLCj7pHgTJnQivCoB2QFj/liA5kS4vejywHwvMD3YTq2YLvmquDi3EzvvOAMURRDL8plI6rR5ozWrpVDip0vQj+digDUTR74NZJeMuIr0ZNteWy4D4khIvbZlPoR6TCjKaPUHWCPCs=",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Jane Smith\",\n    \"employeeId\": \"EMP010\",\n    \"userName\": \"Jane1234\",\n    \"password\": \"1234567\",\n    \"role\": \"ADMIN\",\n    \"menuAccess\": [\n        1,\n        2,\n        3\n    ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/user",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get User",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "authorization",
+										"value": "U2FsdGVkX1+SIuK4yyPTWvYIL5y7AylCDRdxsXW7X6B5TbRcOTBk2u3sbm6DMnpqKWjo3JSeKwC9txx+gey63s3uvWs0NEOpwPjK/Z3dhIWyj+9XV8p+55fh/eFDrEQAishxThPhR8zRccmhThAZ0eT/dYixRGwnOKegUH4Ko4kNf9fvNPBlmASK70YTMLJtxFjpBoII1VOS9GgI1UrkwhGEe29qwFlCxz7fNIYmdKc4IydEDZaMT4GsyZrppwqL",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/user/all",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user",
+										"all"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get one User",
+							"request": {
+								"auth": {
+									"type": "noauth"
+								},
+								"method": "GET",
+								"header": [
+									{
+										"key": "authorization",
+										"value": "U2FsdGVkX1+SIuK4yyPTWvYIL5y7AylCDRdxsXW7X6B5TbRcOTBk2u3sbm6DMnpqKWjo3JSeKwC9txx+gey63s3uvWs0NEOpwPjK/Z3dhIWyj+9XV8p+55fh/eFDrEQAishxThPhR8zRccmhThAZ0eT/dYixRGwnOKegUH4Ko4kNf9fvNPBlmASK70YTMLJtxFjpBoII1VOS9GgI1UrkwhGEe29qwFlCxz7fNIYmdKc4IydEDZaMT4GsyZrppwqL",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/user?id=11",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user"
+									],
+									"query": [
+										{
+											"key": "id",
+											"value": "11"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete User",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "U2FsdGVkX18/MeYnmJw9cZZFSqoOruTq6E69gwrRzwOVGIqwRXA85tWTBJuHDv7KpFQb3suEiyXVc7bH+sf55+MmBB4wgQNNKHmnZ805hg5A+KmIvtzRHjWdS/V3CHhIQ7XtukXXjL2+LiPlFqTa1fVO/dEdyCx5cxog1/wETyTCsiWag5Sf2i4OauA0bqhUG5lBSlz58TnjXNNJjJbwY59ir4Jt9qcAuSLCj7pHgTJnQivCoB2QFj/liA5kS4vejywHwvMD3YTq2YLvmquDi3EzvvOAMURRDL8plI6rR5ozWrpVDip0vQj+digDUTR74NZJeMuIr0ZNteWy4D4khIvbZlPoR6TCjKaPUHWCPCs=",
+											"type": "string"
+										}
+									]
+								},
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "authorization",
+										"value": "U2FsdGVkX18/MeYnmJw9cZZFSqoOruTq6E69gwrRzwOVGIqwRXA85tWTBJuHDv7KpFQb3suEiyXVc7bH+sf55+MmBB4wgQNNKHmnZ805hg5A+KmIvtzRHjWdS/V3CHhIQ7XtukXXjL2+LiPlFqTa1fVO/dEdyCx5cxog1/wETyTCsiWag5Sf2i4OauA0bqhUG5lBSlz58TnjXNNJjJbwY59ir4Jt9qcAuSLCj7pHgTJnQivCoB2QFj/liA5kS4vejywHwvMD3YTq2YLvmquDi3EzvvOAMURRDL8plI6rR5ozWrpVDip0vQj+digDUTR74NZJeMuIr0ZNteWy4D4khIvbZlPoR6TCjKaPUHWCPCs=",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Jane Smith\",\n    \"employeeId\": \"EMP008\",\n    \"userName\": \"Jane123\",\n    \"password\": \"1234567\",\n\n    \"role\": \"ADMIN\",\n    \"menuAccess\": [\n        1,\n        2,\n        3\n    ]\n}"
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/user?id=8",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user"
+									],
+									"query": [
+										{
+											"key": "id",
+											"value": "8"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Hard Delete user",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "U2FsdGVkX18/MeYnmJw9cZZFSqoOruTq6E69gwrRzwOVGIqwRXA85tWTBJuHDv7KpFQb3suEiyXVc7bH+sf55+MmBB4wgQNNKHmnZ805hg5A+KmIvtzRHjWdS/V3CHhIQ7XtukXXjL2+LiPlFqTa1fVO/dEdyCx5cxog1/wETyTCsiWag5Sf2i4OauA0bqhUG5lBSlz58TnjXNNJjJbwY59ir4Jt9qcAuSLCj7pHgTJnQivCoB2QFj/liA5kS4vejywHwvMD3YTq2YLvmquDi3EzvvOAMURRDL8plI6rR5ozWrpVDip0vQj+digDUTR74NZJeMuIr0ZNteWy4D4khIvbZlPoR6TCjKaPUHWCPCs=",
+											"type": "string"
+										}
+									]
+								},
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "authorization",
+										"value": "U2FsdGVkX18/MeYnmJw9cZZFSqoOruTq6E69gwrRzwOVGIqwRXA85tWTBJuHDv7KpFQb3suEiyXVc7bH+sf55+MmBB4wgQNNKHmnZ805hg5A+KmIvtzRHjWdS/V3CHhIQ7XtukXXjL2+LiPlFqTa1fVO/dEdyCx5cxog1/wETyTCsiWag5Sf2i4OauA0bqhUG5lBSlz58TnjXNNJjJbwY59ir4Jt9qcAuSLCj7pHgTJnQivCoB2QFj/liA5kS4vejywHwvMD3YTq2YLvmquDi3EzvvOAMURRDL8plI6rR5ozWrpVDip0vQj+digDUTR74NZJeMuIr0ZNteWy4D4khIvbZlPoR6TCjKaPUHWCPCs=",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"Jane Smith\",\n    \"employeeId\": \"EMP008\",\n    \"userName\": \"Jane123\",\n    \"password\": \"1234567\",\n\n    \"role\": \"ADMIN\",\n    \"menuAccess\": [\n        1,\n        2,\n        3\n    ]\n}"
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/user/hard?id=8",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"user",
+										"hard"
+									],
+									"query": [
+										{
+											"key": "id",
+											"value": "8"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Token",
+					"item": [
+						{
+							"name": "get token for free",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/token?userId=4",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"token"
+									],
+									"query": [
+										{
+											"key": "userId",
+											"value": "4"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Auth",
+					"item": [
+						{
+							"name": "Login",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"userName\": \"test2\",\n    \"password\": \"123456\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/auth",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"auth"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Forgetpassword",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"tejas.tamkar@gmail.com\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/auth/forget-password",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"auth",
+										"forget-password"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Product",
+					"item": [
+						{
+							"name": "Size/Grade",
+							"item": [
+								{
+									"name": "Create size/grade for product",
+									"request": {
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"name\": \"M40\",\n    \"subcategory\":\"pure mix\",\n    \"productId\":2\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/product/size",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"product",
+												"size"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Get all the Size/Grade for the product",
+									"protocolProfileBehavior": {
+										"disableBodyPruning": true
+									},
+									"request": {
+										"method": "GET",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"name\": \"M30\",\n    \"subcategory\":\"pure mix\",\n    \"productId\":2\n}"
+										},
+										"url": {
+											"raw": "{{base_url}}/api/v1/admin/product/size/2",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"product",
+												"size",
+												"2"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Delete Size/Grade",
+									"request": {
+										"method": "DELETE",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"name\": \"M40\",\n    \"subcategory\":\"pure mix\",\n    \"productId\":2\n}"
+										},
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/product/size/4",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"product",
+												"size",
+												"4"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Update Size/Grade",
+									"request": {
+										"method": "PUT",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"id\":2,\n    \"name\": \"M40\",\n    \"subcategory\":\"pure mix\",\n    \"productId\":2,\n    \"isActive\":true\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/product/size",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"product",
+												"size"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						},
+						{
+							"name": "Create Product",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"RMC\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/product",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"product"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Product",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/product?page=1&length=10&search=",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"product"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "length",
+											"value": "10"
+										},
+										{
+											"key": "search",
+											"value": ""
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Product by Id",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"RMC\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/product/1",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"product",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Product by Id",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"RMC\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/product/1",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"product",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Hard Delete Product by Id",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"name\": \"RMC\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/product/hard/1",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"product",
+										"hard",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Product",
+							"request": {
+								"method": "PUT",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"id\":5,\n    \"name\":\"Test_RMC\",\n    \"isActive\":false\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/product",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"product"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Vendor",
+					"item": [
+						{
+							"name": "Location and Handlers",
+							"item": [
+								{
+									"name": "Add Location",
+									"request": {
+										"auth": {
+											"type": "bearer",
+											"bearer": [
+												{
+													"key": "token",
+													"value": "{{authtoken}}",
+													"type": "string"
+												}
+											]
+										},
+										"method": "POST",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"vendorId\": 1,\n  \"plantName\": \"Pune Production Facility\",\n  \"address\": \"Survey No. 123/4, Hinjewadi Phase 2, Pune, Maharashtra 411057\",\n  \"latitude\": 18.5912,\n  \"longitude\": 73.7389\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{base_url}}/api/v1/admin/vendor/locations",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"locations"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Update Location",
+									"request": {
+										"auth": {
+											"type": "bearer",
+											"bearer": [
+												{
+													"key": "token",
+													"value": "{{authtoken}}",
+													"type": "string"
+												}
+											]
+										},
+										"method": "PUT",
+										"header": [],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"id\": 2,\n  \"vendorId\": 1,\n  \"plantName\": \"Mumbai Manufacturing Unit - Updated\",\n  \"address\": \"Plot No. 45-46, MIDC Industrial Area, Andheri East, Mumbai, Maharashtra 400093\",\n  \"productId\": 2,\n  \"latitude\": 19.1136,\n  \"longitude\": 72.8697\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{base_url}}/api/v1/admin/vendor/locations",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"locations"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Get Location by vendor id",
+									"request": {
+										"method": "GET",
+										"header": [],
+										"url": {
+											"raw": "{{base_url}}/api/v1/admin/vendor/1/locations",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"1",
+												"locations"
+											]
+										},
+										"description": "Generated from cURL: curl --location 'http://localhost:3000/api/admin/vendors/1/locations?page=1&length=10' \\\n--header 'Authorization: Bearer YOUR_TOKEN_HERE'"
+									},
+									"response": []
+								},
+								{
+									"name": "Get Location By Id",
+									"request": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Authorization",
+												"value": "Bearer YOUR_TOKEN_HERE"
+											}
+										],
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/vendor/locations/21",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"locations",
+												"21"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Delete Location by Id",
+									"request": {
+										"method": "DELETE",
+										"header": [
+											{
+												"key": "Authorization",
+												"value": "Bearer YOUR_TOKEN_HERE"
+											}
+										],
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/vendor/locations/3",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"locations",
+												"3"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Add Handler",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Authorization",
+												"value": "Bearer YOUR_TOKEN_HERE"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"locationId\": 2,\n    \"name\": \"John Doe\",\n    \"phone\": \"+919876543210\",\n    \"email\": \"john.doe@example.com\"\n  }",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{base_url}}/api/v1/admin/vendor/handlers",
+											"host": [
+												"{{base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"handlers"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Update Handler",
+									"request": {
+										"method": "PUT",
+										"header": [
+											{
+												"key": "Authorization",
+												"value": "Bearer YOUR_TOKEN_HERE"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n    \"id\": 1,\n    \"locationId\": 2,\n    \"name\": \"Jane Doe\",\n    \"phone\": \"+919876543211\",\n    \"email\": \"jane.test@example.com\"\n}",
+											"options": {
+												"raw": {
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/vendor/handlers",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"handlers"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Delete Handler",
+									"request": {
+										"method": "DELETE",
+										"header": [
+											{
+												"key": "Authorization",
+												"value": "Bearer YOUR_TOKEN_HERE"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/vendor/handlers/2",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"handlers",
+												"2"
+											]
+										}
+									},
+									"response": []
+								},
+								{
+									"name": "Get Handler for Location",
+									"request": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Authorization",
+												"value": "Bearer YOUR_TOKEN_HERE"
+											},
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "{{dev_base_url}}/api/v1/admin/vendor/handlers/2",
+											"host": [
+												"{{dev_base_url}}"
+											],
+											"path": [
+												"api",
+												"v1",
+												"admin",
+												"vendor",
+												"handlers",
+												"2"
+											]
+										}
+									},
+									"response": []
+								}
+							]
+						},
+						{
+							"name": "Create Vendor",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{authtoken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"companyName\": \"Acme Industries\",\n  \"ownerName\": \"John Doe\",\n  \"phone\": \"9876543210\",\n  \"email\": \"john@acme.com\",\n  \"address\": \"123, Industrial Area, Mumbai, Maharashtra, India\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/vendor",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"vendor"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Vendor",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{authtoken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "PUT",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"id\":5,\n  \"companyName\": \"Acme Industries\",\n  \"ownerName\": \"Mike Jackson\",\n  \"phone\": \"9876543210\",\n  \"email\": \"john@acme.in\",\n  \"address\": \"123, Industrial Area, Mumbai, Maharashtra, India\",\n  \"gstNumber\": \"27ABCDE1234F13\",\n  \"panNumber\": \"ABCDE12342\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/vendor",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"vendor"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get vendors All",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{authtoken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/vendor",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"vendor"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get vendors by id",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{authtoken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "GET",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/vendor/1",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"vendor",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete vendors by id",
+							"request": {
+								"auth": {
+									"type": "bearer",
+									"bearer": [
+										{
+											"key": "token",
+											"value": "{{authtoken}}",
+											"type": "string"
+										}
+									]
+								},
+								"method": "DELETE",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/vendor/5",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"vendor",
+										"5"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Lead",
+					"item": [
+						{
+							"name": "upsert Lead",
+							"request": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"companyName\": \"Shivesh\",\r\n    \"contactPerson\": \"nivedita\",\r\n    \"email\": \"test@gmail.com\",\r\n    \"phone\": \"9218745963\",\r\n    \"address\": \"1280 Evergreen Terrace, Springfield, USA\",\r\n    \"source\": \"WEBSITE\",\r\n    \"status\": \"NEW\",\r\n    \"requirement\":\"Commercial building\",\r\n    \"assignedToId\": 24\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/leads",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"leads"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "get Lead",
+							"protocolProfileBehavior": {
+								"disableBodyPruning": true
+							},
+							"request": {
+								"method": "GET",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": ""
+								},
+								"url": {
+									"raw": "http://localhost:3001/api/v1/admin/leads",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "3001",
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"leads"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "delete Lead",
+							"request": {
+								"method": "DELETE",
+								"header": [],
+								"url": {
+									"raw": "http://localhost:3001/api/v1/admin/leads?leadId=cmh5v04h20001ukxgsb61yuf9",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "3001",
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"leads"
+									],
+									"query": [
+										{
+											"key": "leadId",
+											"value": "cmh5v04h20001ukxgsb61yuf9"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "update lead log",
+							"request": {
+								"method": "PUT",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\r\n    \"date\": \"2025-10-25\",\r\n    \"time\": \"10:40 AM\",\r\n    \"title\": \"Follow-up with client regarding proposal\",\r\n    \"description\": \"Discussed project scope and next steps for the software implementation proposal.\",\r\n    \"status\": \"NEW\",\r\n    \"assignedToId\": 24\r\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://localhost:3001/api/v1/admin/leads/log?leadId=cmh622ewv0001ukkcyqqyvvi8",
+									"protocol": "http",
+									"host": [
+										"localhost"
+									],
+									"port": "3001",
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"leads",
+										"log"
+									],
+									"query": [
+										{
+											"key": "leadId",
+											"value": "cmh622ewv0001ukkcyqqyvvi8"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "lead by id",
+							"request": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/leads/by-id?leadId=cmh622ewv0001ukkcyqqyvvi8",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"leads",
+										"by-id"
+									],
+									"query": [
+										{
+											"key": "leadId",
+											"value": "cmh622ewv0001ukkcyqqyvvi8"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "New Request",
+							"request": {
+								"method": "GET",
+								"header": []
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Client",
+					"item": [
+						{
+							"name": "List Clients",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{dev_base_url}}/api/v1/admin/client/list?page=1&limit=10",
+									"host": [
+										"{{dev_base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"list"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "10"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Create Client",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"companyName\": \"Shivesh Company Pvt Ltd\",\n  \"ownerName\": \"Girish Sharma\",\n  \"contactNumber\": \"9876543210\",\n  \"email\": \"girish.sharma@example.com\",\n  \"hasGST\": true,\n  \"gstNumber\": \"27ABCDE1234F1Z5\",\n  \"ownerPan\": \"BNZPM1234K\",\n  \"ownerAadhaar\": \"123456789123\",\n  \"address\": \"Sector 15, Navi Mumbai, Maharashtra, India\"\n\n}\n"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/create",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"create"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Get Client Details",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/1",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"1"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Client",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"clientId\": 1,\n  \"companyName\": \"Updated Shivesh Company Pvt Ltd\",\n  \"ownerName\": \"Updated Girish Sharma\",\n  \"contactNumber\": \"9876543211\",\n  \"email\": \"updated.girish@example.com\",\n  \"hasGST\": true,\n  \"gstNumber\": \"27ABCDE1234F1Z5\",\n  \"ownerPan\": \"BNZPM1234K\",\n  \"ownerAadhaar\": \"123456789123\",\n  \"address\": \"Updated Sector 15, Navi Mumbai, Maharashtra, India\"\n}"
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/update",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"update"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Client",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/2",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"2"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Upload KYC Documents",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "clientId",
+											"value": "1",
+											"type": "text"
+										},
+										{
+											"key": "kycDocuments",
+											"type": "file",
+											"src": "/path/to/pan-card.pdf"
+										},
+										{
+											"key": "kycDocuments",
+											"type": "file",
+											"src": "/path/to/aadhaar-card.pdf"
+										},
+										{
+											"key": "kycDocuments",
+											"type": "file",
+											"src": "/path/to/gst-certificate.pdf"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/upload-kyc",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"upload-kyc"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "List KYC Documents",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/kyc-list?clientId=1",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"kyc-list"
+									],
+									"query": [
+										{
+											"key": "clientId",
+											"value": "1"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Delete KYC Document",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{token}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/client/1/kyc/2",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"client",
+										"1",
+										"kyc",
+										"2"
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
+		}
+	],
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{authtoken}}",
+				"type": "string"
+			}
+		]
+	},
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"packages": {},
+				"requests": {},
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": ""
+		},
+		{
+			"key": "dev_base_url",
+			"value": ""
+		},
+		{
+			"key": "authtoken",
+			"value": ""
+		}
+	]
+}

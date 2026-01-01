@@ -127,7 +127,7 @@ export const createClient = async (req, res) => {
     // Generate client ID
     const currentYear = new Date().getFullYear();
     const lastClient = await db.client.findFirst({
-      where: { clientId: { startsWith: `CL-${currentYear}-` } },
+      where: { id: { startsWith: `CL-${currentYear}-` } },
       orderBy: { createdAt: "desc" },
     });
 
@@ -250,7 +250,7 @@ export const updateClient = async (req, res) => {
 
     // Check if client exists
     const existingClient = await db.client.findFirst({
-      where: { clientId, isDeleted: false },
+      where: { id: clientId, isDeleted: false },
     });
 
     if (!existingClient) {
@@ -346,7 +346,7 @@ export const deleteClient = async (req, res) => {
 
     // Find client
     const client = await db.client.findFirst({
-      where: { clientId, isDeleted: false },
+      where: { id: clientId, isDeleted: false },
     });
 
     if (!client) {
@@ -394,7 +394,55 @@ export const deleteClient = async (req, res) => {
   }
 };
 
-// 🔵 6. UPLOAD MULTIPLE KYC DOCUMENTS
+// 🔵 6. GET KYC DOCUMENTS LIST
+export const getKYCList = async (req, res) => {
+  try {
+    const { clientId } = req.query;
+
+    if (!clientId) {
+      return res.status(400).json({
+        success: false,
+        message: "clientId is required as query parameter",
+      });
+    }
+
+    // Find client
+    const client = await db.client.findFirst({
+      where: { id: clientId, isDeleted: false },
+    });
+    logger.info("Client fetched for KYC list:", client);
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client not found",
+      });
+    }
+
+    // Get all KYC documents for the client
+    const kycDocuments = await db.kYCDocument.findMany({
+      where: { clientId: client.id },
+      select: {
+        docId: true,
+        fileName: true,
+        fileUrl: true,
+        type: true,
+        uploadedAt: true,
+      },
+      orderBy: { uploadedAt: "desc" },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: kycDocuments,
+      total: kycDocuments.length,
+    });
+  } catch (error) {
+    logger.error("Error fetching KYC documents:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+// 🔵 7. UPLOAD MULTIPLE KYC DOCUMENTS
 export const uploadKYCDocuments = async (req, res) => {
   try {
     const { clientId } = req.body;
@@ -416,7 +464,7 @@ export const uploadKYCDocuments = async (req, res) => {
 
     // Find client
     const client = await db.client.findFirst({
-      where: { clientId, isDeleted: false },
+      where: { id: clientId, isDeleted: false },
     });
 
     if (!client) {
@@ -485,14 +533,14 @@ export const uploadKYCDocuments = async (req, res) => {
   }
 };
 
-// 🔵 7. DELETE ONE KYC DOCUMENT
+// 🔵 8. DELETE ONE KYC DOCUMENT
 export const deleteKYCDocument = async (req, res) => {
   try {
     const { clientId, docId } = req.params;
 
     // Find client
     const client = await db.client.findFirst({
-      where: { clientId, isDeleted: false },
+      where: { id: clientId, isDeleted: false },
     });
 
     if (!client) {
