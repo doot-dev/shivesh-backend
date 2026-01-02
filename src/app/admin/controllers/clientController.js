@@ -124,11 +124,16 @@ export const createClient = async (req, res) => {
       }
     }
 
-    // Generate client ID
+    // Generate unique client ID with retry logic
     const currentYear = new Date().getFullYear();
+    let clientId;
+
+    // Get the last client ID for the current year
     const lastClient = await db.client.findFirst({
-      where: { id: { startsWith: `CL-${currentYear}-` } },
-      orderBy: { createdAt: "desc" },
+      where: {
+        clientId: { startsWith: `CL-${currentYear}-` },
+      },
+      orderBy: { clientId: "desc" },
     });
 
     let clientIdNumber = 1;
@@ -136,31 +141,51 @@ export const createClient = async (req, res) => {
       const lastNumber = parseInt(lastClient.clientId.split("-")[2]);
       clientIdNumber = lastNumber + 1;
     }
-    const clientId = `CL-${currentYear}-${String(clientIdNumber).padStart(4, "0")}`;
+
+    clientId = `CL-${currentYear}-${String(clientIdNumber).padStart(4, "0")}`;
+
+    // Check if this clientId already exists
+    const existingClientId = await db.client.findUnique({
+      where: { clientId },
+    });
+
+
 
     // Create client with KYC documents
-    const client = await db.client.create({
-      data: {
-        clientId,
-        companyName,
-        ownerName,
-        contactNumber,
-        email,
-        hasGST,
-        gstNumber: hasGST ? gstNumber : null,
-        ownerPan: ownerPan || null,
-        ownerAadhaar: ownerAadhaar || null,
-        address,
-        kycDocuments: {
-          create: kycDocuments.map((doc, index) => ({
-            docId: `DOC-${Date.now()}-${index + 1}`,
-            fileName: doc.fileName,
-            fileUrl: doc.fileUrl,
-            type: doc.type,
-          })),
+    let client;
+    try {
+      client = await db.client.create({
+        data: {
+          clientId,
+          companyName,
+          ownerName,
+          contactNumber,
+          email,
+          hasGST,
+          gstNumber: hasGST ? gstNumber : null,
+          ownerPan: ownerPan || null,
+          ownerAadhaar: ownerAadhaar || null,
+          address,
+          kycDocuments: {
+            create: kycDocuments.map((doc, index) => ({
+              docId: `DOC-${Date.now()}-${index + 1}`,
+              fileName: doc.fileName,
+              fileUrl: doc.fileUrl,
+              type: doc.type,
+            })),
+          },
         },
-      },
-    });
+      });
+    } catch (createError) {
+      // Handle Prisma unique constraint error
+      if (createError.code === 'P2002') {
+        return res.status(400).json({
+          success: false,
+          message: "Client ID already exists. Please try again.",
+        });
+      }
+      throw createError;
+    }
 
     // Log activity
     await createActivityLog({
