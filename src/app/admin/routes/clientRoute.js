@@ -11,7 +11,7 @@ clientRoute.post("/upload-kyc", verifyToken, uploadMultipleKYC, clientController
 clientRoute.get("/kyc-list", verifyToken, clientController.getKYCList);
 clientRoute.get("/:clientId", verifyToken, clientController.getClientDetails);
 clientRoute.put("/update", verifyToken, clientController.updateClient);
-clientRoute.delete("/:clientId", verifyToken, clientController.deleteClient);
 clientRoute.delete("/:clientId/kyc/:docId", verifyToken, clientController.deleteKYCDocument);
+clientRoute.delete("/:clientId", verifyToken, clientController.deleteClient);
 
 export default clientRoute;

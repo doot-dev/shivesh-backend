@@ -8,7 +8,7 @@ import { unlink, rm } from 'fs/promises';
  * @param {import('express-fileupload').File} file the image file
  * @returns {Promise<string>} the path of the written image
  */
-export async function imageStore(fileName, path, file) {
+export async function fileStore(fileName, path, file) {
     const fileExtension = extname(file.name);
     const filePathName = `public/${path}/${fileName + fileExtension}`;
     return new Promise((resolve, reject) => {

@@ -10,15 +10,10 @@ import { createActivityLog } from "../../../helper/activityLogger.js";
 import { getPublicUrl, deleteUploadedFile } from "../../../config/multerConfig.js";
 
 /**
- * Retrieves a list of clients with pagination and optional filters.
- *
- * @param {Request} req - Express request object containing page, length, search, and status query parameters
+ * Get list of clients with pagination and filters
+ * @param {Request} req - Express request object containing page, limit, search, and status query parameters
  * @param {Response} res - Express response object
- * @returns {Object} JSON response with:
- *   - success {boolean}: Operation status
- *   - data {Array}: Array of clients on success, null on failure
- *   - total {number}: Total number of clients
- *   - page {number}: Page number
+ * @returns {Object} JSON response with success, data, total, and page
  */
 export const getClientList = async (req, res) => {
   try {
@@ -76,8 +71,9 @@ export const getClientList = async (req, res) => {
 
 /**
  * Create a new client
- * @param {Object} req.body - Client data to create
- * @returns {Promise<Object>} - Created client data
+ * @param {Request} req - Express request object containing client data
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success, message, and clientId
  */
 export const createClient = async (req, res) => {
   const { err, status } = await validatorFunction(req.body, createClientValidation);
@@ -186,7 +182,7 @@ export const createClient = async (req, res) => {
       }
       throw createError;
     }
-
+    logger.info("req.user", req);
     // Log activity
     await createActivityLog({
       title: "Client created",
@@ -208,7 +204,12 @@ export const createClient = async (req, res) => {
   }
 };
 
-// 🔵 3. GET CLIENT DETAILS
+/**
+ * Get client details by clientId
+ * @param {Request} req - Express request object containing clientId in params
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success and client data
+ */
 export const getClientDetails = async (req, res) => {
   try {
     const { clientId } = req.params;
@@ -251,7 +252,12 @@ export const getClientDetails = async (req, res) => {
   }
 };
 
-// 🔵 4. UPDATE CLIENT
+/**
+ * Update existing client
+ * @param {Request} req - Express request object containing clientId and updated data
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success and message
+ */
 export const updateClient = async (req, res) => {
   const { err, status } = await validatorFunction(req.body, updateClientValidation);
   if (!status) {
@@ -364,7 +370,12 @@ export const updateClient = async (req, res) => {
   }
 };
 
-// 🔵 5. DELETE CLIENT
+/**
+ * Soft delete a client
+ * @param {Request} req - Express request object containing clientId in params
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success and message
+ */
 export const deleteClient = async (req, res) => {
   try {
     const { clientId } = req.params;
@@ -419,7 +430,12 @@ export const deleteClient = async (req, res) => {
   }
 };
 
-// 🔵 6. GET KYC DOCUMENTS LIST
+/**
+ * Get list of KYC documents for a client
+ * @param {Request} req - Express request object containing clientId in query params
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success, data, and total
+ */
 export const getKYCList = async (req, res) => {
   try {
     const { clientId } = req.query;
@@ -467,7 +483,12 @@ export const getKYCList = async (req, res) => {
   }
 };
 
-// 🔵 7. UPLOAD MULTIPLE KYC DOCUMENTS
+/**
+ * Upload multiple KYC documents for a client
+ * @param {Request} req - Express request object containing clientId and files
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success, message, and uploaded documents
+ */
 export const uploadKYCDocuments = async (req, res) => {
   try {
     const { clientId } = req.body;
@@ -495,7 +516,7 @@ export const uploadKYCDocuments = async (req, res) => {
     if (!client) {
       // If client not found, delete uploaded files
       for (const file of uploadedFiles) {
-        await deleteUploadedFile(file.filename);
+        await deleteUploadedFile(clientId, file.filename);
       }
       return res.status(404).json({
         success: false,
@@ -509,7 +530,7 @@ export const uploadKYCDocuments = async (req, res) => {
     // Create KYC documents in database
     const documents = await Promise.all(
       uploadedFiles.map(async (file, index) => {
-        const fileUrl = getPublicUrl(file.filename);
+        const fileUrl = getPublicUrl(clientId, file.filename);
         return await db.kYCDocument.create({
           data: {
             docId: `DOC-${Date.now()}-${index + 1}`,
@@ -548,7 +569,7 @@ export const uploadKYCDocuments = async (req, res) => {
     // Clean up uploaded files on error
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
-        await deleteUploadedFile(file.filename).catch(err =>
+        await deleteUploadedFile(req.body.clientId, file.filename).catch(err =>
           logger.error(`Failed to delete file ${file.filename}:`, err)
         );
       }
@@ -558,7 +579,12 @@ export const uploadKYCDocuments = async (req, res) => {
   }
 };
 
-// 🔵 8. DELETE ONE KYC DOCUMENT
+/**
+ * Delete a specific KYC document
+ * @param {Request} req - Express request object containing clientId and docId in params
+ * @param {Response} res - Express response object
+ * @returns {Object} JSON response with success and message
+ */
 export const deleteKYCDocument = async (req, res) => {
   try {
     const { clientId, docId } = req.params;
@@ -589,7 +615,7 @@ export const deleteKYCDocument = async (req, res) => {
 
     // Extract filename from fileUrl and delete physical file
     const filename = document.fileUrl.split('/').pop();
-    await deleteUploadedFile(filename).catch(err =>
+    await deleteUploadedFile(clientId, filename).catch(err =>
       logger.warn(`Could not delete physical file ${filename}:`, err)
     );
 

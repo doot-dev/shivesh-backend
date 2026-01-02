@@ -6,19 +6,33 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure upload directories exist
-const uploadDir = path.join(__dirname, '../../public/uploads/kyc');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Base upload directory
+const baseUploadDir = path.join(__dirname, '../../public/uploads/kyc');
+if (!fs.existsSync(baseUploadDir)) {
+  fs.mkdirSync(baseUploadDir, { recursive: true });
 }
 
 // Configure storage
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    // Get clientId from request body
+    const clientId = req.body.clientId;
+
+    if (!clientId) {
+      return cb(new Error('Client ID is required'));
+    }
+
+    // Create client-specific directory
+    const clientDir = path.join(baseUploadDir, clientId.toString());
+
+    if (!fs.existsSync(clientDir)) {
+      fs.mkdirSync(clientDir, { recursive: true });
+    }
+
+    cb(null, clientDir);
   },
   filename: function (req, file, cb) {
-    // Generate unique filename: clientId-timestamp-originalname
+    // Generate unique filename: timestamp-originalname
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     const nameWithoutExt = path.basename(file.originalname, ext);
@@ -56,14 +70,14 @@ export const uploadMultipleKYC = uploadKYC.array('kycDocuments', 10); // Max 10 
 export const uploadSingleKYC = uploadKYC.single('kycDocument');
 
 // Helper function to get public URL for uploaded file
-export function getPublicUrl(filename) {
-  return `/uploads/kyc/${filename}`;
+export function getPublicUrl(clientId, filename) {
+  return `/uploads/kyc/${clientId}/${filename}`;
 }
 
 // Helper function to delete uploaded file
-export async function deleteUploadedFile(filename) {
+export async function deleteUploadedFile(clientId, filename) {
   try {
-    const filePath = path.join(uploadDir, filename);
+    const filePath = path.join(baseUploadDir, clientId.toString(), filename);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
       return true;
@@ -71,6 +85,21 @@ export async function deleteUploadedFile(filename) {
     return false;
   } catch (error) {
     console.error('Error deleting file:', error);
+    return false;
+  }
+}
+
+// Helper function to delete entire client folder
+export async function deleteClientFolder(clientId) {
+  try {
+    const clientDir = path.join(baseUploadDir, clientId.toString());
+    if (fs.existsSync(clientDir)) {
+      fs.rmSync(clientDir, { recursive: true, force: true });
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error deleting client folder:', error);
     return false;
   }
 }
