@@ -26,7 +26,7 @@ const router = express.Router();
 router.post("/product/vendor/create", verifyToken, createProjectProductVendor);
 router.get("/:projectId/product/:productId/vendor/list", verifyToken, getProjectProductVendors);
 router.put("/product/vendor", verifyToken, updateProjectProductVendor);
-router.delete("/:projectId/product/:productId/vendor/:vendorId", verifyToken, deleteProjectProductVendor);
+router.delete("/:projectId/product/:productId/vendor/:productVendorId", verifyToken, deleteProjectProductVendor);
 
 // Project Product routes
 router.post("/product/create", verifyToken, createProjectProduct);

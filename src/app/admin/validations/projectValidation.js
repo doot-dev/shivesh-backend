@@ -58,9 +58,10 @@ export const createProjectProductVendorValidation = {
 };
 
 export const updateProjectProductVendorValidation = {
+  productVendorId: "required|string",
   projectId: "required|string",
   productId: "required|string",
-  vendorId: "required|string",
+  vendorId: "required|integer",
   customPrice: "numeric|min:0",
   priority: "in:HIGH,MEDIUM,LOW",
 };

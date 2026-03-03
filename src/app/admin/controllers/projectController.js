@@ -1101,28 +1101,29 @@ export const getProjectProductVendors = async (req, res) => {
       where: {
         projectProductId: productId,
       },
+
       include: {
-        vendor: {
-          select: {
-            id: true,
-            companyName: true,
-            ownerName: true,
-            phone: true,
-            email: true,
-          },
-        },
+        vendor: true
       },
       orderBy: {
         priority: "asc",
       },
     });
 
-    logger.info(`Retrieved ${vendors.length} vendors for product: ${productId}`);
+    let venderRenameMap = await Promise.all(vendors.map(async (vendor) => {
+      const tempData = {
+        productVendorId: vendor.id,
+        ...vendor,
+      }
+      delete tempData.id;
+      return tempData;
+    }));
+    logger.info(`Retrieved ${venderRenameMap.length} vendors for product: ${productId}`);
 
     return res.json({
       success: true,
       message: "Vendors fetched successfully",
-      data: vendors,
+      data: venderRenameMap,
     });
   } catch (error) {
     logger.error("Error fetching vendors:", error);
@@ -1149,7 +1150,7 @@ export const updateProjectProductVendor = async (req, res) => {
       });
     }
 
-    const { customPrice, priority, projectId, productId, vendorId } = req.body;
+    const { customPrice, priority, projectId, productId, vendorId, productVendorId } = req.body;
 
     logger.info(`Updating vendor: ${vendorId} for product: ${productId}`);
 
@@ -1186,7 +1187,7 @@ export const updateProjectProductVendor = async (req, res) => {
     // Check if vendor exists
     const existingVendor = await db.projectProductVendor.findFirst({
       where: {
-        id: vendorId,
+        id: productVendorId,
         projectProductId: productId,
       },
     });
@@ -1200,10 +1201,11 @@ export const updateProjectProductVendor = async (req, res) => {
 
     // Update vendor
     const updatedVendor = await db.projectProductVendor.update({
-      where: { id: vendorId },
+      where: { id: productVendorId },
       data: {
         ...(customPrice && { customPrice: parseFloat(customPrice) }),
         ...(priority && { priority }),
+        vendorId: vendorId ? parseInt(vendorId) : existingVendor.vendorId,
       },
       include: {
         vendor: {
@@ -1249,9 +1251,9 @@ export const updateProjectProductVendor = async (req, res) => {
  */
 export const deleteProjectProductVendor = async (req, res) => {
   try {
-    const { projectId, productId, vendorId } = req.params;
+    const { projectId, productId, productVendorId } = req.params;
 
-    logger.info(`Deleting vendor: ${vendorId} from product: ${productId}`);
+    logger.info(`Deleting vendor: ${productVendorId} from product: ${productId}`);
 
     // Check if project exists
     const project = await db.project.findFirst({
@@ -1286,7 +1288,7 @@ export const deleteProjectProductVendor = async (req, res) => {
     // Check if vendor exists
     const projectVendor = await db.projectProductVendor.findFirst({
       where: {
-        id: vendorId,
+        id: productVendorId,
         projectProductId: productId,
       },
       include: {
@@ -1307,7 +1309,7 @@ export const deleteProjectProductVendor = async (req, res) => {
 
     // Delete vendor
     await db.projectProductVendor.delete({
-      where: { id: vendorId },
+      where: { id: productVendorId },
     });
 
     // Log activity
