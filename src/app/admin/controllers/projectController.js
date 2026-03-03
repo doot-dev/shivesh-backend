@@ -1322,7 +1322,7 @@ export const deleteProjectProductVendor = async (req, res) => {
       createdById: Number(req.user?.data?.userId) || null,
     });
 
-    logger.info(`Vendor deleted successfully: ${vendorId}`);
+    logger.info(`Vendor deleted successfully: ${productVendorId}`);
 
     return res.json({
       success: true,
