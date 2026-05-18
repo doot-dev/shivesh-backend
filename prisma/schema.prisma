@@ -18,20 +18,22 @@ datasource db {
 // ========================================
 
 model User {
-  id            Int        @id @default(autoincrement())
-  name          String
-  employeeId    String
-  userName      String
-  password      String
-  role          UserRole
-  status        Boolean    @default(true)
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  isDeleted     Boolean    @default(false)
-  lastLoginAt   DateTime?
-  menuAccess    Json       @default("[]") // JSON array of accessible menu items
-  assignedLeads Lead[]     @relation("LeadAssignedTo")
-  activities    Activity[] @relation("UserActivities")
+  id             Int        @id @default(autoincrement())
+  name           String
+  employeeId     String
+  userName       String
+  password       String
+  role           UserRole
+  status         Boolean    @default(true)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  isDeleted      Boolean    @default(false)
+  lastLoginAt    DateTime?
+  phone          String? // For field tech OTP login
+  menuAccess     Json       @default("[]")
+  assignedLeads  Lead[]     @relation("LeadAssignedTo")
+  activities     Activity[] @relation("UserActivities")
+  assignedOrders Order[]    @relation("OrderAssignedTo")
 }
 
 model OTP {
@@ -80,6 +82,7 @@ model Vendor {
   isDeleted             Boolean                @default(false)
   locations             VendorLocation[]
   projectProductVendors ProjectProductVendor[]
+  orders                Order[]
 }
 
 model VendorLocation {
@@ -96,6 +99,7 @@ model VendorLocation {
   handlers  VendorHandler[]
   product   Product?        @relation(fields: [productId], references: [id])
   productId Int?
+  orders    Order[]
 }
 
 model VendorHandler {
@@ -108,6 +112,7 @@ model VendorHandler {
   isDeleted        Boolean         @default(false)
   VendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
   vendorLocationId Int?
+  orders           Order[]
 }
 
 model Lead {
@@ -165,6 +170,7 @@ model Client {
   kycStatus     KYCStatus     @default(PENDING)
   kycDocuments  KYCDocument[]
   projects      Project[]
+  orders        Order[]
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   isDeleted     Boolean       @default(false)
@@ -213,6 +219,7 @@ model Project {
   creditResetPeriodDays Int?
 
   projectProducts ProjectProduct[]
+  orders          Order[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
   isDeleted       Boolean          @default(false)
@@ -272,6 +279,94 @@ model ProjectProductVendor {
 
   @@index([projectProductId])
   @@index([vendorId])
+}
+
+// ========================================
+// ORDER MANAGEMENT MODELS
+// ========================================
+
+model Order {
+  id               String          @id @default(cuid())
+  orderId          String          @unique // e.g. ORD-2025-0001
+  projectId        String
+  project          Project         @relation(fields: [projectId], references: [id])
+  clientId         String
+  client           Client          @relation(fields: [clientId], references: [id])
+  assignedToId     Int?
+  assignedTo       User?           @relation("OrderAssignedTo", fields: [assignedToId], references: [id])
+  vendorId         Int?
+  vendor           Vendor?         @relation(fields: [vendorId], references: [id])
+  vendorLocationId Int?
+  vendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
+  vendorHandlerId  Int?
+  vendorHandler    VendorHandler?  @relation(fields: [vendorHandlerId], references: [id])
+  productName      String
+  productGrade     String
+  quantity         String
+  deliveryAddress  String?         @db.Text
+  date             String?
+  time             String?
+  status           OrderStatus     @default(NEW)
+  deliveryStatus   DeliveryStatus  @default(ASSIGNED)
+  tmDetails        TmDetail[]
+  comments         OrderComment[]
+  notifications    Notification[]
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  isDeleted        Boolean         @default(false)
+
+  @@index([projectId])
+  @@index([clientId])
+  @@index([assignedToId])
+}
+
+model TmDetail {
+  id             String         @id @default(cuid())
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tmNumber       String
+  truckNo        String
+  qty            String
+  batchStartTime String
+  batchEndTime   String
+  challanNo      String
+  challanUrl     String?
+  status         DeliveryStatus @default(ASSIGNED)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  isDeleted      Boolean        @default(false)
+
+  @@index([orderId])
+}
+
+model OrderComment {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  message    String   @db.Text
+  authorType String // ADMIN | CLIENT | FIELD_TECH
+  authorId   String
+  authorName String
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Notification {
+  id         String   @id @default(cuid())
+  targetType String // CLIENT | FIELD_TECH | ADMIN
+  targetId   String // clientId (string) or userId (int as string)
+  title      String
+  message    String   @db.Text
+  isRead     Boolean  @default(false)
+  type       String // ORDER_CREATED | STATUS_UPDATED | COMMENT_ADDED | REMINDER | GENERAL
+  relatedId  String? // orderId or other entity id
+  orderId    String?
+  order      Order?   @relation(fields: [orderId], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([orderId])
 }
 
 // ========================================
@@ -349,6 +444,7 @@ enum EntityType {
   TASK
   USER
   CLIENT
+  ORDER
 }
 
 enum ActivityAction {

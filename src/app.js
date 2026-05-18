@@ -9,6 +9,7 @@ import 'dotenv/config';
 import logger from './helper/logger.js';
 import { databaseConnection } from './config/database.js';
 import adminApiRoutes from './app/admin/routes/index.js';
+import mobileApiRoutes from './app/mobile/routes/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -60,6 +61,7 @@ app.get('/health', async (req, res) => {
 
 // API Routes
 app.use('/api/v1/admin', adminApiRoutes);
+app.use('/api/v1/mobile', mobileApiRoutes);
 
 // 404 handler
 app.use((req, res) => {

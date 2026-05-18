@@ -25,27 +25,27 @@
   "license": "ISC",
   "description": "Express backend for Shivesh project",
   "dependencies": {
-    "@prisma/client": "^6.19.1",
+    "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
-    "body-parser": "^2.2.1",
+    "body-parser": "^2.2.2",
     "compression": "^1.8.1",
-    "cors": "^2.8.5",
+    "cors": "^2.8.6",
     "crypto-js": "^4.2.0",
-    "dotenv": "^17.2.3",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "form-data": "^4.0.5",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.1",
-    "multer": "^2.0.2",
-    "nodemailer": "^7.0.12",
-    "uuid": "^13.0.0",
+    "multer": "^2.1.1",
+    "nodemailer": "^8.0.7",
+    "uuid": "^14.0.0",
     "validatorjs": "^3.22.1",
     "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11",
-    "prisma": "^6.19.1"
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3"
   }
 }
