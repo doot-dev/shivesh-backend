@@ -191,6 +191,20 @@ model KYCDocument {
   @@index([clientId])
 }
 
+// ─── FCM device tokens (CLIENT + FIELD_TECH, multi-device) ───────────────────
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  token      String   @unique
+  platform   String // android | ios
+  targetType String // CLIENT | FIELD_TECH
+  targetId   String // client.id or user.id (as string)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([targetType, targetId])
+}
+
 // ========================================
 // PROJECT MANAGEMENT MODELS
 // ========================================

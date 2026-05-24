@@ -445,3 +445,37 @@ export async function deleteSize(req, res) {
         return res.status(500).json({ success: false, message: error.message, data: null });
     }
 }
+
+export async function toggleProductStatus(req, res) {
+    try {
+        const { id } = req.params;
+        const product = await db.product.findUnique({ where: { id: parseInt(id), isDeleted: false } });
+        if (!product) return res.status(404).json({ success: false, message: 'Product not found', data: null });
+
+        const updated = await db.product.update({
+            where: { id: parseInt(id) },
+            data: { isActive: !product.isActive },
+        });
+        return res.status(200).json({ success: true, message: `Product ${updated.isActive ? 'activated' : 'deactivated'}`, data: updated });
+    } catch (error) {
+        logger.error('Error toggling product status:', error);
+        return res.status(500).json({ success: false, message: error.message, data: null });
+    }
+}
+
+export async function toggleSizeStatus(req, res) {
+    try {
+        const { id } = req.params;
+        const size = await db.size.findUnique({ where: { id: parseInt(id) } });
+        if (!size) return res.status(404).json({ success: false, message: 'Size not found', data: null });
+
+        const updated = await db.size.update({
+            where: { id: parseInt(id) },
+            data: { isActive: !size.isActive },
+        });
+        return res.status(200).json({ success: true, message: `Size ${updated.isActive ? 'activated' : 'deactivated'}`, data: updated });
+    } catch (error) {
+        logger.error('Error toggling size status:', error);
+        return res.status(500).json({ success: false, message: error.message, data: null });
+    }
+}

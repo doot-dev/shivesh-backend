@@ -8,11 +8,15 @@ import { fileURLToPath } from 'url';
 import 'dotenv/config';
 import logger from './helper/logger.js';
 import { databaseConnection } from './config/database.js';
+import { initFirebase } from './helper/firebase.js';
 import adminApiRoutes from './app/admin/routes/index.js';
 import mobileApiRoutes from './app/mobile/routes/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Initialise Firebase Admin (push notifications)
+initFirebase();
 
 // Create Express app
 const app = express();

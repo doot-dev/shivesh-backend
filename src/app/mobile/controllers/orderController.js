@@ -1,5 +1,6 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
+import { sendNotification } from '../../../helper/notificationHelper.js';
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ const DEV_TECH_ID   = 'dev-tech';
 
 export async function clientListOrders(req, res) {
   try {
-    const { type = 'active', page = 1, limit = 20 } = req.query;
+    const { type = 'active', page = 1, limit = 20, projectId } = req.query;
     const clientDbId = req.user.data.id;
 
     // DEV BYPASS — remove before production
@@ -66,6 +67,7 @@ export async function clientListOrders(req, res) {
       clientId: clientDbId,
       isDeleted: false,
       status: { in: type === 'past' ? pastStatuses : activeStatuses },
+      ...(projectId ? { project: { projectId } } : {}),
     };
 
     const [orders, total] = await Promise.all([
@@ -89,6 +91,14 @@ export async function clientListOrders(req, res) {
     logger.error('clientListOrders error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
+}
+
+// ─── Client: list orders for a specific project (path param) ─────────────────
+
+export async function clientListProjectOrders(req, res) {
+  // Merge path param into query so the shared logic in clientListOrders can be reused
+  req.query.projectId = req.params.projectId;
+  return clientListOrders(req, res);
 }
 
 // ─── Client: get single order ─────────────────────────────────────────────────
@@ -175,16 +185,14 @@ export async function clientCreateOrder(req, res) {
     });
 
     // Notify admin (create notification for type ADMIN)
-    await db.notification.create({
-      data: {
-        targetType: 'ADMIN',
-        targetId: 'admin',
-        title: 'New Order Created',
-        message: `Client placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
-        type: 'ORDER_CREATED',
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    await sendNotification({
+      targetType: 'ADMIN',
+      targetId: 'admin',
+      title: 'New Order Created',
+      message: `Client placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
+      type: 'ORDER_CREATED',
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     return res.status(201).json({
@@ -310,16 +318,14 @@ export async function techUpdateStatus(req, res) {
     });
 
     // Notify the client
-    await db.notification.create({
-      data: {
-        targetType: 'CLIENT',
-        targetId: order.clientId,
-        title: 'Order Status Updated',
-        message: `Your order ${orderId} status has been updated to ${deliveryStatus.replace('_', ' ')}`,
-        type: 'STATUS_UPDATED',
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    await sendNotification({
+      targetType: 'CLIENT',
+      targetId: order.clientId,
+      title: 'Order Status Updated',
+      message: `Your order ${orderId} status has been updated to ${deliveryStatus.replace('_', ' ')}`,
+      type: 'STATUS_UPDATED',
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     return res.status(200).json({ success: true, message: 'Status updated', data: { deliveryStatus: updated.deliveryStatus } });
@@ -384,16 +390,14 @@ export async function addComment(req, res) {
     const notifyId = notifyType === 'CLIENT' ? order.clientId : String(order.assignedToId || '');
 
     if (notifyId) {
-      await db.notification.create({
-        data: {
-          targetType: notifyType,
-          targetId: notifyId,
-          title: 'New Comment',
-          message: `${authorName} commented on order ${orderId}`,
-          type: 'COMMENT_ADDED',
-          relatedId: order.id,
-          orderId: order.id,
-        },
+      await sendNotification({
+        targetType: notifyType,
+        targetId: notifyId,
+        title: 'New Comment',
+        message: `${authorName} commented on order ${orderId}`,
+        type: 'COMMENT_ADDED',
+        relatedId: order.id,
+        orderId: order.id,
       });
     }
 

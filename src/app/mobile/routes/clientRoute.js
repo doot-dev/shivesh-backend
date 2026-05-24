@@ -7,7 +7,15 @@ const router = Router();
 
 // Profile & projects
 router.get('/profile', verifyClientToken, clientController.getProfile);
+router.put('/fcm-token', verifyClientToken, clientController.registerFcmToken);
 router.get('/projects', verifyClientToken, clientController.getProjects);
+router.get('/projects/:projectId', verifyClientToken, clientController.getProjectDetail);
+router.get('/projects/:projectId/products', verifyClientToken, clientController.getProjectProducts);
+router.get('/projects/:projectId/orders', verifyClientToken, orderController.clientListProjectOrders);
+
+// Products
+router.get('/products', verifyClientToken, clientController.getProductNames);
+router.get('/products/:productName/grades', verifyClientToken, clientController.getProductGrades);
 
 // Notifications
 router.get('/notifications', verifyClientToken, clientController.getNotifications);

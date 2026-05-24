@@ -8,6 +8,8 @@ import leadRoute from "./leadsRoute.js"
 import clientRoute from "./clientRoute.js"
 import projectRoute from "./projectRoute.js"
 import orderRoute from "./orderRoute.js"
+import dashboardRoute from "./dashboardRoute.js"
+import notificationRoute from "./notificationRoute.js"
 
 
 const router = Router()
@@ -19,6 +21,8 @@ router.use('/vendor', vendorRoute)
 router.use('/leads', leadRoute)
 router.use('/client', clientRoute)
 router.use('/project', projectRoute)
-router.use('/order', orderRoute)
+router.use('/orders', orderRoute)
+router.use('/dashboard', dashboardRoute)
+router.use('/notifications', notificationRoute)
 
 export default router 
