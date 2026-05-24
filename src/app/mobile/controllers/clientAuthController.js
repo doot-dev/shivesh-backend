@@ -8,7 +8,7 @@ import logger from '../../../helper/logger.js';
  * Uses MSG91 when keys are configured; returns OTP in dev mode otherwise.
  */
 const DEV_MOCK_PHONE = '9999999999';
-const DEV_MOCK_OTP   = '123456';
+const DEV_MOCK_OTP = '123456';
 
 // Normalize to 10-digit Indian mobile number regardless of how it's stored
 function normalizePhone(raw) {
@@ -29,16 +29,18 @@ export async function sendOtp(req, res) {
       return res.status(400).json({ success: false, message: 'Phone number is required' });
     }
 
+    const normalizedPhone = normalizePhone(phone);
+
     // DEV BYPASS — remove before production
-    if (normalizePhone(phone) === DEV_MOCK_PHONE) {
+    if (normalizedPhone === DEV_MOCK_PHONE) {
       logger.info(`[DEV] Client mock OTP bypass for ${phone}`);
       return res.status(200).json({ success: true, message: 'OTP sent successfully', data: { otp: DEV_MOCK_OTP } });
     }
 
     const client = await db.client.findFirst({
-      where: { contactNumber: { in: phoneVariants(phone) }, isDeleted: false, status: 'ACTIVE' },
+      where: { contactNumber: { equals: normalizedPhone }, isDeleted: false, status: 'ACTIVE' },
     });
-
+    logger.info(`Client sendOtp requested for ${normalizedPhone} - client ${client ? 'found' : 'not found'}`);
     if (!client) {
       return res.status(404).json({
         success: false,
@@ -48,7 +50,7 @@ export async function sendOtp(req, res) {
 
     // Deactivate previous OTPs
     await db.oTP.updateMany({
-      where: { finder: phone, active: true },
+      where: { finder: { equals: normalizedPhone }, active: true },
       data: { active: false },
     });
 
@@ -61,10 +63,10 @@ export async function sendOtp(req, res) {
 
     // Store in DB for verification
     await db.oTP.create({
-      data: { finder: phone, otp, mode: 'SMS', active: true },
+      data: { finder: normalizedPhone, otp, mode: 'SMS', active: true },
     });
 
-    logger.info(`Client OTP sent to ${phone}${devMode ? ` (dev: ${otp})` : ''}`);
+    logger.info(`Client OTP sent to ${normalizedPhone}${devMode ? ` (dev: ${otp})` : ''}`);
 
     return res.status(200).json({
       success: true,
@@ -88,8 +90,10 @@ export async function verifyOtp(req, res) {
       return res.status(400).json({ success: false, message: 'Phone and OTP are required' });
     }
 
+    const normalizedPhone = normalizePhone(phone);
+
     // DEV BYPASS — remove before production
-    if (phone === DEV_MOCK_PHONE && String(otp) === DEV_MOCK_OTP) {
+    if (normalizedPhone === DEV_MOCK_PHONE && String(otp) === DEV_MOCK_OTP) {
       const mockPayload = { type: 'CLIENT', id: 'dev-client', clientId: 'DEV001', name: 'Dev Client', phone };
       const token = generateToken(mockPayload);
       logger.info(`[DEV] Client mock OTP verified for ${phone}`);
@@ -101,7 +105,7 @@ export async function verifyOtp(req, res) {
     }
 
     const otpRecord = await db.oTP.findFirst({
-      where: { finder: { in: phoneVariants(phone) }, otp: String(otp), active: true },
+      where: { finder: { endsWith: normalizedPhone }, otp: String(otp), active: true },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -118,7 +122,7 @@ export async function verifyOtp(req, res) {
     await db.oTP.update({ where: { id: otpRecord.id }, data: { active: false } });
 
     const client = await db.client.findFirst({
-      where: { contactNumber: { in: phoneVariants(phone) }, isDeleted: false },
+      where: { contactNumber: { endsWith: normalizedPhone }, isDeleted: false },
     });
 
     if (!client) {
