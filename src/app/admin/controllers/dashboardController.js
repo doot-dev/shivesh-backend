@@ -37,7 +37,10 @@ export async function getStats(req, res) {
         include: {
           project: { select: { projectName: true } },
           client: { select: { companyName: true } },
-          assignedTo: { select: { name: true } },
+          technicians: {
+            where: { isDeleted: false },
+            select: { user: { select: { id: true, name: true } } },
+          },
         },
       }),
     ]);

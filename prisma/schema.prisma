@@ -18,22 +18,22 @@ datasource db {
 // ========================================
 
 model User {
-  id             Int        @id @default(autoincrement())
+  id             Int               @id @default(autoincrement())
   name           String
   employeeId     String
   userName       String
   password       String
   role           UserRole
-  status         Boolean    @default(true)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
-  isDeleted      Boolean    @default(false)
+  status         Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  isDeleted      Boolean           @default(false)
   lastLoginAt    DateTime?
   phone          String? // For field tech OTP login
-  menuAccess     Json       @default("[]")
-  assignedLeads  Lead[]     @relation("LeadAssignedTo")
-  activities     Activity[] @relation("UserActivities")
-  assignedOrders Order[]    @relation("OrderAssignedTo")
+  menuAccess     Json              @default("[]")
+  assignedLeads  Lead[]            @relation("LeadAssignedTo")
+  activities     Activity[]        @relation("UserActivities")
+  assignedOrders OrderTechnician[] @relation("OrderTechnicianUser")
 }
 
 model OTP {
@@ -82,24 +82,24 @@ model Vendor {
   isDeleted             Boolean                @default(false)
   locations             VendorLocation[]
   projectProductVendors ProjectProductVendor[]
-  orders                Order[]
+  orderVendors          OrderVendor[]
 }
 
 model VendorLocation {
-  id        Int             @id @default(autoincrement())
-  vendorId  Int
-  plantName String          @db.VarChar(255)
-  latitude  String          @db.Text
-  longitude String          @db.Text
-  address   String          @db.Text
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  isDeleted Boolean         @default(false)
-  Vendor    Vendor          @relation(fields: [vendorId], references: [id])
-  handlers  VendorHandler[]
-  product   Product?        @relation(fields: [productId], references: [id])
-  productId Int?
-  orders    Order[]
+  id           Int             @id @default(autoincrement())
+  vendorId     Int
+  plantName    String          @db.VarChar(255)
+  latitude     String          @db.Text
+  longitude    String          @db.Text
+  address      String          @db.Text
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  isDeleted    Boolean         @default(false)
+  Vendor       Vendor          @relation(fields: [vendorId], references: [id])
+  handlers     VendorHandler[]
+  product      Product?        @relation(fields: [productId], references: [id])
+  productId    Int?
+  orderVendors OrderVendor[]
 }
 
 model VendorHandler {
@@ -112,7 +112,7 @@ model VendorHandler {
   isDeleted        Boolean         @default(false)
   VendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
   vendorLocationId Int?
-  orders           Order[]
+  orderVendors     OrderVendor[]
 }
 
 model Lead {
@@ -300,55 +300,111 @@ model ProjectProductVendor {
 // ========================================
 
 model Order {
+  id              String            @id @default(cuid())
+  orderId         String            @unique // e.g. ORD-2025-0001
+  projectId       String
+  project         Project           @relation(fields: [projectId], references: [id])
+  clientId        String
+  client          Client            @relation(fields: [clientId], references: [id])
+  productName     String
+  productGrade    String
+  quantity        String
+  deliveryAddress String?           @db.Text
+  date            String?
+  time            String?
+  status          OrderStatus       @default(NEW)
+  deliveryStatus  DeliveryStatus    @default(ASSIGNED)
+  vendors         OrderVendor[]
+  technicians     OrderTechnician[]
+  tmDetails       TmDetail[]
+  comments        OrderComment[]
+  notifications   Notification[]
+  bill            Bill?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  isDeleted       Boolean           @default(false)
+
+  @@index([projectId])
+  @@index([clientId])
+}
+
+// One bill per order. `quantity` and `amount` are snapshotted at generation
+// time so an issued bill does not silently change when TMs are edited later.
+model Bill {
+  id        String     @id @default(cuid())
+  billNo    String     @unique // e.g. BILL-2025-0001
+  orderId   String     @unique
+  order     Order      @relation(fields: [orderId], references: [id])
+  quantity  Float // total accepted TM quantity at generation time
+  rate      Float // per-unit rate applied
+  amount    Float // quantity * rate
+  status    BillStatus @default(PENDING)
+  issueDate DateTime?
+  dueDate   DateTime?
+  paidAt    DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  isDeleted Boolean    @default(false)
+
+  @@index([orderId])
+}
+
+// An order may be sourced from several vendors; each row is one vendor
+// assignment (vendor + the plant it ships from + the handler to contact).
+model OrderVendor {
   id               String          @id @default(cuid())
-  orderId          String          @unique // e.g. ORD-2025-0001
-  projectId        String
-  project          Project         @relation(fields: [projectId], references: [id])
-  clientId         String
-  client           Client          @relation(fields: [clientId], references: [id])
-  assignedToId     Int?
-  assignedTo       User?           @relation("OrderAssignedTo", fields: [assignedToId], references: [id])
-  vendorId         Int?
-  vendor           Vendor?         @relation(fields: [vendorId], references: [id])
+  orderId          String
+  order            Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendorId         Int
+  vendor           Vendor          @relation(fields: [vendorId], references: [id])
   vendorLocationId Int?
   vendorLocation   VendorLocation? @relation(fields: [vendorLocationId], references: [id])
   vendorHandlerId  Int?
   vendorHandler    VendorHandler?  @relation(fields: [vendorHandlerId], references: [id])
-  productName      String
-  productGrade     String
-  quantity         String
-  deliveryAddress  String?         @db.Text
-  date             String?
-  time             String?
-  status           OrderStatus     @default(NEW)
-  deliveryStatus   DeliveryStatus  @default(ASSIGNED)
-  tmDetails        TmDetail[]
-  comments         OrderComment[]
-  notifications    Notification[]
   createdAt        DateTime        @default(now())
   updatedAt        DateTime        @updatedAt
   isDeleted        Boolean         @default(false)
 
-  @@index([projectId])
-  @@index([clientId])
-  @@index([assignedToId])
+  @@index([orderId])
+  @@index([vendorId])
+}
+
+// Field technicians assigned to an order. Replaces Order.assignedToId; the
+// mobile tech app scopes every order query through this table.
+model OrderTechnician {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation("OrderTechnicianUser", fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isDeleted Boolean  @default(false)
+
+  @@index([orderId])
+  @@index([userId])
 }
 
 model TmDetail {
-  id             String         @id @default(cuid())
-  orderId        String
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  tmNumber       String
-  truckNo        String
-  qty            String
-  batchStartTime String
-  batchEndTime   String
-  challanNo      String
-  challanUrl     String?
-  status         DeliveryStatus @default(ASSIGNED)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  isDeleted      Boolean        @default(false)
+  id              String         @id @default(cuid())
+  orderId         String
+  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tmNumber        String
+  truckNo         String
+  qty             String
+  batchStartTime  String
+  batchEndTime    String
+  challanNo       String
+  challanUrl      String?
+  status          DeliveryStatus @default(ASSIGNED)
+  // Billing approval, kept separate from `status` (which tracks where the
+  // truck is). Only ACCEPTED trucks are billed.
+  approvalStatus  TmApproval     @default(PENDING)
+  rejectionReason String?        @db.Text
+  approvedAt      DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  isDeleted       Boolean        @default(false)
 
   @@index([orderId])
 }
@@ -426,6 +482,12 @@ enum DeliveryStatus {
   IN_TRANSIT
   DELIVERED
   COMPLETED
+}
+
+enum TmApproval {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 enum BillStatus {

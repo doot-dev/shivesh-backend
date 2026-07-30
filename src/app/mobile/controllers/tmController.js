@@ -14,7 +14,7 @@ export async function createTm(req, res) {
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, assignedToId: userId, isDeleted: false },
+      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
     });
 
     if (!order) {
@@ -70,7 +70,7 @@ export async function updateTm(req, res) {
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
-      where: { orderId, assignedToId: userId, isDeleted: false },
+      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
     });
 
     if (!order) {
@@ -113,7 +113,7 @@ export async function deleteTm(req, res) {
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
-      where: { orderId, assignedToId: userId, isDeleted: false },
+      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
     });
 
     if (!order) {
