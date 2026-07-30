@@ -23,16 +23,38 @@ function buildOrderSelect() {
     createdAt: true,
     project: { select: { projectId: true, projectName: true, siteName: true, projectLocation: true } },
     client: { select: { clientId: true, companyName: true, contactNumber: true } },
-    assignedTo: { select: { id: true, name: true, employeeId: true, phone: true } },
-    vendor: { select: { id: true, companyName: true } },
-    vendorLocation: { select: { id: true, plantName: true, address: true } },
-    vendorHandler: { select: { id: true, name: true, phone: true } },
+    vendors: {
+      where: { isDeleted: false },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        vendor: { select: { id: true, companyName: true } },
+        vendorLocation: { select: { id: true, plantName: true, address: true } },
+        vendorHandler: { select: { id: true, name: true, phone: true } },
+      },
+    },
+    technicians: {
+      where: { isDeleted: false },
+      orderBy: { createdAt: 'asc' },
+      select: {
+        id: true,
+        user: { select: { id: true, name: true, employeeId: true, phone: true } },
+      },
+    },
     tmDetails: {
       where: { isDeleted: false },
       orderBy: { createdAt: 'asc' },
     },
     comments: { orderBy: { createdAt: 'asc' } },
   };
+}
+
+/**
+ * Orders this technician is assigned to. Replaces the old `assignedToId: userId`
+ * filter now that an order can carry several technicians.
+ */
+function assignedToTech(userId) {
+  return { technicians: { some: { userId, isDeleted: false } } };
 }
 
 function formatOrder(o) {
@@ -225,7 +247,7 @@ export async function techListOrders(req, res) {
     const pastStatuses = ['DELIVERED', 'COMPLETED', 'CANCELLED'];
 
     const where = {
-      assignedToId: userId,
+      ...assignedToTech(userId),
       isDeleted: false,
       status: { in: type === 'past' ? pastStatuses : activeStatuses },
     };
@@ -266,7 +288,7 @@ export async function techGetOrder(req, res) {
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, assignedToId: userId, isDeleted: false },
+      where: { orderId, ...assignedToTech(userId), isDeleted: false },
       select: buildOrderSelect(),
     });
 
@@ -295,7 +317,7 @@ export async function techUpdateStatus(req, res) {
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, assignedToId: userId, isDeleted: false },
+      where: { orderId, ...assignedToTech(userId), isDeleted: false },
     });
 
     if (!order) {
@@ -385,21 +407,30 @@ export async function addComment(req, res) {
       },
     });
 
-    // Notify the other party
-    const notifyType = authorType === 'CLIENT' ? 'FIELD_TECH' : 'CLIENT';
-    const notifyId = notifyType === 'CLIENT' ? order.clientId : String(order.assignedToId || '');
+    // Notify the other party — a client comment reaches every assigned tech,
+    // a tech comment reaches the client.
+    const notifyTargets =
+      authorType === 'CLIENT'
+        ? (
+            await db.orderTechnician.findMany({
+              where: { orderId: order.id, isDeleted: false },
+              select: { userId: true },
+            })
+          ).map((t) => ({ targetType: 'FIELD_TECH', targetId: String(t.userId) }))
+        : [{ targetType: 'CLIENT', targetId: order.clientId }];
 
-    if (notifyId) {
-      await sendNotification({
-        targetType: notifyType,
-        targetId: notifyId,
-        title: 'New Comment',
-        message: `${authorName} commented on order ${orderId}`,
-        type: 'COMMENT_ADDED',
-        relatedId: order.id,
-        orderId: order.id,
-      });
-    }
+    await Promise.all(
+      notifyTargets.map((target) =>
+        sendNotification({
+          ...target,
+          title: 'New Comment',
+          message: `${authorName} commented on order ${orderId}`,
+          type: 'COMMENT_ADDED',
+          relatedId: order.id,
+          orderId: order.id,
+        })
+      )
+    );
 
     return res.status(201).json({ success: true, data: comment });
   } catch (error) {

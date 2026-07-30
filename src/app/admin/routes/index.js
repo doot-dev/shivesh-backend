@@ -8,6 +8,7 @@ import leadRoute from "./leadsRoute.js"
 import clientRoute from "./clientRoute.js"
 import projectRoute from "./projectRoute.js"
 import orderRoute from "./orderRoute.js"
+import billRoute from "./billRoute.js"
 import dashboardRoute from "./dashboardRoute.js"
 import notificationRoute from "./notificationRoute.js"
 
@@ -22,6 +23,7 @@ router.use('/leads', leadRoute)
 router.use('/client', clientRoute)
 router.use('/project', projectRoute)
 router.use('/orders', orderRoute)
+router.use('/bills', billRoute)
 router.use('/dashboard', dashboardRoute)
 router.use('/notifications', notificationRoute)
 
