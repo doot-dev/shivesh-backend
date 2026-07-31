@@ -7,16 +7,19 @@ import {
   updateBill,
   updateBillStatus,
   deleteBill,
-  updateTmApproval,
   uploadBillDocument,
+  uploadTmChallan,
+  updateTmApproval,
 } from "../controllers/billController.js";
 import { verifyToken } from "../../../config/jwtConfig.js";
 import { uploadSingleBillDoc } from "../../../config/billUploadConfig.js";
+import { uploadSingleChallan } from "../../../config/challanUploadConfig.js";
 
 const router = express.Router();
 
-// TM approval routes (gates what gets billed)
-router.put("/tm/approval", verifyToken, updateTmApproval);
+// TM review routes — challans and accept/reject are collected against a bill
+router.post("/:billNo/tm/:tmId/challan", verifyToken, uploadSingleChallan, uploadTmChallan);
+router.put("/:billNo/tm/:tmId/approval", verifyToken, updateTmApproval);
 
 // Bill routes
 router.post("/create", verifyToken, createBill);

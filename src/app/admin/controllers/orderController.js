@@ -8,8 +8,34 @@ import {
   updateOrderVendorValidation,
   createOrderTechnicianValidation,
   updateOrderTechnicianValidation,
+  createOrderTmValidation,
+  updateOrderTmValidation,
 } from "../validations/orderValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
+import { generateBillForOrder } from "./billController.js";
+
+/**
+ * Normalise one TM from a request body into Prisma create data.
+ * `tmNumber` is assigned by the caller, which knows the TM's position.
+ */
+function buildTmData(tm, tmNumber) {
+  return {
+    tmNumber,
+    truckNo: tm.truckNo,
+    qty: tm.qty,
+    dispatchTime: tm.dispatchTime || null,
+    arrivalTime: tm.arrivalTime || null,
+    batchStartTime: tm.batchStartTime || null,
+    batchEndTime: tm.batchEndTime || null,
+    challanNo: tm.challanNo || null,
+    status: tm.status || "ASSIGNED",
+  };
+}
+
+/** TM numbers run TM 01, TM 02 … per order. */
+function formatTmNumber(index) {
+  return `TM ${String(index).padStart(2, "0")}`;
+}
 
 function buildVendorInclude() {
   return {
@@ -153,12 +179,18 @@ export async function listOrders(req, res) {
       clientId,
       assignedToId,
       search,
+      includeDeleted,
     } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
+    // Soft-deleted orders stay hidden unless asked for. When included they come
+    // back carrying isDeleted: true, so the caller can mark them rather than
+    // mistake them for live orders.
+    const showDeleted = includeDeleted === "true";
+
     const where = {
-      isDeleted: false,
+      ...(!showDeleted && { isDeleted: false }),
       ...(status ? { status } : { status: { not: "COMPLETED" } }),
       ...(assignedToId && {
         technicians: {
@@ -213,9 +245,10 @@ export async function getOrder(req, res) {
   try {
     console.log("getOrder req.params:", req.params);
     const { orderId } = req.params;
+    const showDeleted = req.query.includeDeleted === "true";
 
     const order = await db.order.findFirst({
-      where: { orderId, isDeleted: false },
+      where: { orderId, ...(!showDeleted && { isDeleted: false }) },
       include: buildInclude(),
     });
 
@@ -244,6 +277,7 @@ export async function createOrder(req, res) {
       clientId,
       vendors = [],
       technicians = [],
+      tmDetails = [],
       productName,
       productGrade,
       quantity,
@@ -264,12 +298,16 @@ export async function createOrder(req, res) {
         });
     }
 
-    if (!Array.isArray(vendors) || !Array.isArray(technicians)) {
+    if (
+      !Array.isArray(vendors) ||
+      !Array.isArray(technicians) ||
+      !Array.isArray(tmDetails)
+    ) {
       return res
         .status(400)
         .json({
           success: false,
-          message: "vendors and technicians must be arrays",
+          message: "vendors, technicians and tmDetails must be arrays",
         });
     }
 
@@ -344,6 +382,20 @@ export async function createOrder(req, res) {
       }
     }
 
+    // TMs are numbered by their position in the array. Only the truck and its
+    // load are needed up front — timings and the challan follow as it runs.
+    const tmRows = [];
+    for (const [i, tm] of tmDetails.entries()) {
+      if (!tm?.truckNo || !tm?.qty) {
+        return res.status(400).json({
+          success: false,
+          message: "Each TM requires a truckNo and qty",
+        });
+      }
+
+      tmRows.push(buildTmData(tm, formatTmNumber(i + 1)));
+    }
+
     // Generate orderId
     const currentYear = new Date().getFullYear();
     const lastOrder = await db.order.findFirst({
@@ -373,6 +425,7 @@ export async function createOrder(req, res) {
         ...(technicianIds.length && {
           technicians: { create: technicianIds.map((userId) => ({ userId })) },
         }),
+        ...(tmRows.length && { tmDetails: { create: tmRows } }),
       },
       include: buildInclude(),
     });
@@ -557,9 +610,34 @@ export async function updateOrderStatus(req, res) {
       createdById: Number(req.user?.data?.id) || null,
     });
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Order status updated", data: updated });
+    // Completing an order bills it. Billing runs after the status is committed
+    // and never fails the request: the order really is COMPLETED either way, so
+    // a missing price is reported as a warning to be fixed and retried through
+    // POST /bills/create rather than rolling the status back.
+    let bill = null;
+    let billError = null;
+
+    if (status === "COMPLETED" && order.status !== "COMPLETED") {
+      const result = await generateBillForOrder(orderId, {
+        createdById: Number(req.user?.data?.id) || null,
+      });
+
+      if (result.error) {
+        billError = result.error;
+        logger.warn(`Auto-billing skipped for ${orderId}: ${result.error}`);
+      } else {
+        bill = result.bill;
+        logger.info(`Auto-billed order ${orderId} as ${bill.billNo}`);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Order status updated",
+      data: updated,
+      ...(bill && { bill }),
+      ...(billError && { billError }),
+    });
   } catch (error) {
     logger.error("admin updateOrderStatus error:", error);
     return res
@@ -1266,6 +1344,282 @@ export const deleteOrderTechnician = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to remove technician",
+      error: error.message,
+    });
+  }
+};
+
+// ─── Order TM details ─────────────────────────────────────────────────────────
+
+/**
+ * Add a TM (transit mixer) delivery to an order.
+ *
+ * TMs are delivery tracking only — a bill is calculated from the order's own
+ * quantity, so nothing here affects billing.
+ */
+export const createOrderTm = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const { err, status: validationStatus } = await validatorFunction(
+      { ...req.body, orderId },
+      createOrderTmValidation,
+    );
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err,
+      });
+    }
+
+    const { truckNo } = req.body;
+
+    logger.info(`Adding TM to order: ${orderId}`);
+
+    const order = await db.order.findFirst({
+      where: { orderId, isDeleted: false },
+    });
+
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    // Deleted rows still count, so a new TM never reuses a number that has
+    // already been printed on a challan.
+    const existingCount = await db.tmDetail.count({
+      where: { orderId: order.id },
+    });
+    const tmNumber = formatTmNumber(existingCount + 1);
+
+    const tm = await db.tmDetail.create({
+      data: { orderId: order.id, ...buildTmData(req.body, tmNumber) },
+    });
+
+    await db.notification.create({
+      data: {
+        targetType: "CLIENT",
+        targetId: order.clientId,
+        title: "TM Details Added",
+        message: `Truck ${truckNo} details added for your order ${orderId}`,
+        type: "STATUS_UPDATED",
+        relatedId: order.id,
+        orderId: order.id,
+      },
+    });
+
+    await createActivityLog({
+      title: "TM added to order",
+      description: `${tmNumber} (${tm.truckNo}) added to order ${orderId} — qty ${tm.qty}`,
+      entityType: "ORDER",
+      entityId: order.id,
+      action: "CREATED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
+
+    logger.info(`TM added to order successfully: ${tm.id}`);
+
+    return res.status(201).json({
+      success: true,
+      message: "TM added successfully",
+      data: tm,
+    });
+  } catch (error) {
+    logger.error("Error adding TM to order:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add TM",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all TM details on an order
+ */
+export const getOrderTms = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+
+    logger.info(`Fetching TM details for order: ${orderId}`);
+
+    const order = await db.order.findFirst({
+      where: { orderId, isDeleted: false },
+    });
+
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    const tms = await db.tmDetail.findMany({
+      where: { orderId: order.id, isDeleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return res.status(200).json({ success: true, data: tms });
+  } catch (error) {
+    logger.error("Error fetching order TMs:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch TM details",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Update a TM on an order. Approval is deliberately not editable here — it has
+ * its own endpoint at PUT /bills/tm/approval.
+ */
+export const updateOrderTm = async (req, res) => {
+  try {
+    const { orderId, tmId } = req.params;
+    const { err, status: validationStatus } = await validatorFunction(
+      { ...req.body, orderId, tmId },
+      updateOrderTmValidation,
+    );
+
+    if (!validationStatus) {
+      return res.status(422).json({
+        success: false,
+        message: "Validation failed",
+        errors: err,
+      });
+    }
+
+    const {
+      truckNo,
+      qty,
+      dispatchTime,
+      arrivalTime,
+      batchStartTime,
+      batchEndTime,
+      challanNo,
+      status,
+    } = req.body;
+
+    logger.info(`Updating TM: ${tmId} on order: ${orderId}`);
+
+    const order = await db.order.findFirst({
+      where: { orderId, isDeleted: false },
+    });
+
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    const existing = await db.tmDetail.findFirst({
+      where: { id: tmId, orderId: order.id, isDeleted: false },
+    });
+
+    if (!existing) {
+      return res
+        .status(404)
+        .json({ success: false, message: "TM detail not found" });
+    }
+
+    const updated = await db.tmDetail.update({
+      where: { id: tmId },
+      // Every field is optional; `undefined` leaves it alone while an explicit
+      // null clears it.
+      data: {
+        ...(truckNo && { truckNo }),
+        ...(qty && { qty }),
+        ...(dispatchTime !== undefined && { dispatchTime }),
+        ...(arrivalTime !== undefined && { arrivalTime }),
+        ...(batchStartTime !== undefined && { batchStartTime }),
+        ...(batchEndTime !== undefined && { batchEndTime }),
+        ...(challanNo !== undefined && { challanNo }),
+        ...(status && { status }),
+      },
+    });
+
+    await createActivityLog({
+      title: "TM updated",
+      description: `${existing.tmNumber} (${updated.truckNo}) updated on order ${orderId}`,
+      entityType: "ORDER",
+      entityId: order.id,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
+
+    logger.info(`TM updated successfully: ${tmId}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "TM updated successfully",
+      data: updated,
+    });
+  } catch (error) {
+    logger.error("Error updating TM:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update TM",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Remove a TM from an order (soft)
+ */
+export const deleteOrderTm = async (req, res) => {
+  try {
+    const { orderId, tmId } = req.params;
+
+    logger.info(`Deleting TM: ${tmId} from order: ${orderId}`);
+
+    const order = await db.order.findFirst({
+      where: { orderId, isDeleted: false },
+    });
+
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    const tm = await db.tmDetail.findFirst({
+      where: { id: tmId, orderId: order.id, isDeleted: false },
+    });
+
+    if (!tm) {
+      return res
+        .status(404)
+        .json({ success: false, message: "TM detail not found" });
+    }
+
+    await db.tmDetail.update({
+      where: { id: tmId },
+      data: { isDeleted: true },
+    });
+
+    await createActivityLog({
+      title: "TM removed from order",
+      description: `${tm.tmNumber} (${tm.truckNo}) removed from order ${orderId}`,
+      entityType: "ORDER",
+      entityId: order.id,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
+
+    logger.info(`TM deleted successfully: ${tmId}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "TM removed successfully",
+    });
+  } catch (error) {
+    logger.error("Error deleting TM:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to remove TM",
       error: error.message,
     });
   }

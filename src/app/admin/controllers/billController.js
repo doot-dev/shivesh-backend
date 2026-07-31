@@ -9,41 +9,53 @@ import {
 } from "../validations/billValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { getBillDocPublicUrl } from "../../../config/billUploadConfig.js";
-
-// Bills are locked once money has moved or the bill is void.
-const LOCKED_BILL_STATUSES = ["PAID", "CANCELLED"];
+import { getChallanPublicUrl } from "../../../config/challanUploadConfig.js";
 
 /**
- * TmDetail.qty is free text ("6", "6 m3"), so a bill's quantity depends on
+ * Resolve a bill and one of its order's TMs together.
+ *
+ * TM review happens against a generated bill, so both endpoints below address a
+ * TM through its billNo rather than its order.
+ */
+async function resolveBillTm(billNo, tmId) {
+  const bill = await db.bill.findFirst({ where: { billNo, isDeleted: false } });
+
+  if (!bill) {
+    return { error: "Bill not found", statusCode: 404 };
+  }
+
+  const tm = await db.tmDetail.findFirst({
+    where: { id: tmId, orderId: bill.orderId, isDeleted: false },
+  });
+
+  if (!tm) {
+    return { error: "TM detail not found on this bill", statusCode: 404 };
+  }
+
+  return { bill, tm };
+}
+
+// Bills are locked once money has moved or the bill is void.
+export const LOCKED_BILL_STATUSES = ["PAID", "CANCELLED"];
+
+// Only a finished order can be billed.
+export const BILLABLE_ORDER_STATUS = "COMPLETED";
+
+/**
+ * Order.quantity is free text ("30", "30 m3"), so a bill's quantity depends on
  * parsing it. Anything we cannot read as a positive number is rejected rather
  * than coerced to 0 — silently under-billing is worse than refusing to bill.
  */
-function parseQty(raw) {
-  const value = parseFloat(String(raw ?? "").trim());
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
+function resolveQuantity(order) {
+  const value = parseFloat(String(order.quantity ?? "").trim());
 
-/**
- * Sum the accepted TM quantities on an order.
- * Returns { error } naming the offending TM when a quantity is unreadable.
- */
-function sumAcceptedQty(tmDetails) {
-  const accepted = tmDetails.filter((tm) => tm.approvalStatus === "ACCEPTED");
-
-  if (!accepted.length) {
-    return { error: "Order has no accepted TM details to bill" };
+  if (!Number.isFinite(value) || value <= 0) {
+    return {
+      error: `Cannot read quantity "${order.quantity}" on order ${order.orderId}`,
+    };
   }
 
-  let total = 0;
-  for (const tm of accepted) {
-    const qty = parseQty(tm.qty);
-    if (qty === null) {
-      return { error: `Cannot read quantity "${tm.qty}" on ${tm.tmNumber}` };
-    }
-    total += qty;
-  }
-
-  return { total, accepted };
+  return { quantity: value };
 }
 
 /**
@@ -91,6 +103,7 @@ function buildBillOrderInclude() {
       where: { isDeleted: false },
       include: { user: { select: { id: true, name: true, employeeId: true, phone: true } } },
     },
+    // Shown on the bill page for reference. TMs never affect the billed amount.
     tmDetails: { where: { isDeleted: false }, orderBy: { createdAt: "asc" } },
   };
 }
@@ -114,6 +127,7 @@ async function buildBillPayload(bill, order) {
     issueDate: bill.issueDate,
     dueDate: bill.dueDate,
     paidAt: bill.paidAt,
+    documentUrl: bill.documentUrl,
     billDetails: {
       product: order.productName,
       grade: order.productGrade,
@@ -144,6 +158,8 @@ async function buildBillPayload(bill, order) {
       tmNumber: tm.tmNumber,
       truckNo: tm.truckNo,
       qty: tm.qty,
+      dispatchTime: tm.dispatchTime,
+      arrivalTime: tm.arrivalTime,
       batchStartTime: tm.batchStartTime,
       batchEndTime: tm.batchEndTime,
       challanNo: tm.challanNo,
@@ -165,7 +181,100 @@ async function buildBillPayload(bill, order) {
 }
 
 /**
- * Generate a bill for an order from its accepted TM details
+ * Generate a bill for a COMPLETED order from the order's own quantity and rate.
+ *
+ * Shared by the manual create endpoint and the automatic generation that fires
+ * when an order is marked COMPLETED, so both produce identical bills. Returns
+ * { error, statusCode } instead of throwing, because the automatic caller must
+ * not fail the status update it is riding on.
+ */
+export async function generateBillForOrder(
+  orderId,
+  { rate: overrideRate, dueDate, createdById } = {},
+) {
+  const order = await db.order.findFirst({
+    where: { orderId, isDeleted: false },
+    include: buildBillOrderInclude(),
+  });
+
+  if (!order) {
+    return { error: "Order not found", statusCode: 404 };
+  }
+
+  if (order.status !== BILLABLE_ORDER_STATUS) {
+    return {
+      error: `Order ${orderId} is ${order.status} — only ${BILLABLE_ORDER_STATUS} orders can be billed`,
+      statusCode: 400,
+    };
+  }
+
+  const existing = await db.bill.findFirst({
+    where: { orderId: order.id, isDeleted: false },
+  });
+
+  if (existing) {
+    return {
+      error: `Order already has bill ${existing.billNo}`,
+      statusCode: 409,
+      bill: existing,
+    };
+  }
+
+  const { error: qtyError, quantity } = resolveQuantity(order);
+  if (qtyError) {
+    return { error: qtyError, statusCode: 400 };
+  }
+
+  const { error: rateError, rate } = await resolveRate(order, overrideRate);
+  if (rateError) {
+    return { error: rateError, statusCode: 400 };
+  }
+
+  // Generate billNo
+  const currentYear = new Date().getFullYear();
+  const lastBill = await db.bill.findFirst({
+    where: { billNo: { startsWith: `BILL-${currentYear}-` } },
+    orderBy: { billNo: "desc" },
+  });
+
+  let seq = 1;
+  if (lastBill) {
+    seq = parseInt(lastBill.billNo.split("-")[2]) + 1;
+  }
+  const billNo = `BILL-${currentYear}-${String(seq).padStart(4, "0")}`;
+
+  const bill = await db.bill.create({
+    data: {
+      billNo,
+      orderId: order.id,
+      quantity,
+      rate,
+      amount: quantity * rate,
+      status: "PENDING",
+      issueDate: new Date(),
+      dueDate: dueDate ? new Date(dueDate) : null,
+    },
+  });
+
+  await createActivityLog({
+    title: "Bill generated",
+    description: `Bill ${billNo} generated for order ${orderId} — ${quantity} × ${rate} = ${bill.amount}`,
+    entityType: "ORDER",
+    entityId: order.id,
+    action: "CREATED",
+    createdById,
+  });
+
+  logger.info(`Bill generated successfully: ${billNo}`);
+
+  return { bill, order };
+}
+
+/**
+ * Generate a bill for a COMPLETED order.
+ *
+ * Orders are billed automatically the moment they are marked COMPLETED, so this
+ * is the manual fallback for orders that finished without one.
  */
 export const createBill = async (req, res) => {
   try {
@@ -183,72 +292,15 @@ export const createBill = async (req, res) => {
 
     logger.info(`Generating bill for order: ${orderId}`);
 
-    const order = await db.order.findFirst({
-      where: { orderId, isDeleted: false },
-      include: buildBillOrderInclude(),
-    });
-
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    const existing = await db.bill.findFirst({
-      where: { orderId: order.id, isDeleted: false },
-    });
-
-    if (existing) {
-      return res.status(409).json({
-        success: false,
-        message: `Order already has bill ${existing.billNo}`,
-      });
-    }
-
-    const { error: qtyError, total } = sumAcceptedQty(order.tmDetails);
-    if (qtyError) {
-      return res.status(400).json({ success: false, message: qtyError });
-    }
-
-    const { error: rateError, rate } = await resolveRate(order, overrideRate);
-    if (rateError) {
-      return res.status(400).json({ success: false, message: rateError });
-    }
-
-    // Generate billNo
-    const currentYear = new Date().getFullYear();
-    const lastBill = await db.bill.findFirst({
-      where: { billNo: { startsWith: `BILL-${currentYear}-` } },
-      orderBy: { billNo: "desc" },
-    });
-
-    let seq = 1;
-    if (lastBill) {
-      seq = parseInt(lastBill.billNo.split("-")[2]) + 1;
-    }
-    const billNo = `BILL-${currentYear}-${String(seq).padStart(4, "0")}`;
-
-    const bill = await db.bill.create({
-      data: {
-        billNo,
-        orderId: order.id,
-        quantity: total,
-        rate,
-        amount: total * rate,
-        status: "PENDING",
-        issueDate: new Date(),
-        dueDate: dueDate ? new Date(dueDate) : null,
-      },
-    });
-
-    await createActivityLog({
-      title: "Bill generated",
-      description: `Bill ${billNo} generated for order ${orderId} — ${total} × ${rate} = ${bill.amount}`,
-      entityType: "ORDER",
-      entityId: order.id,
-      action: "CREATED",
+    const { error, statusCode, bill, order } = await generateBillForOrder(orderId, {
+      rate: overrideRate,
+      dueDate,
       createdById: Number(req.user?.data?.id) || null,
     });
 
-    logger.info(`Bill generated successfully: ${billNo}`);
+    if (error) {
+      return res.status(statusCode).json({ success: false, message: error });
+    }
 
     return res.status(201).json({
       success: true,
@@ -471,11 +523,11 @@ export const updateBill = async (req, res) => {
 
     let quantity = bill.quantity;
     if (recalculate) {
-      const { error: qtyError, total } = sumAcceptedQty(order.tmDetails);
+      const { error: qtyError, quantity: resolved } = resolveQuantity(order);
       if (qtyError) {
         return res.status(400).json({ success: false, message: qtyError });
       }
-      quantity = total;
+      quantity = resolved;
     }
 
     let rate = bill.rate;
@@ -646,12 +698,73 @@ export const deleteBill = async (req, res) => {
   }
 };
 
+
 /**
- * Accept or reject a TM detail. Only accepted TMs are billed.
+ * Attach a challan (PDF/photo) to one of the bill's TMs.
+ *
+ * Challans are collected when the bill is reviewed, against each TM listed on
+ * the bill detail page.
+ */
+export const uploadTmChallan = async (req, res) => {
+  try {
+    const { billNo, tmId } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+
+    const { error, statusCode, tm } = await resolveBillTm(billNo, tmId);
+    if (error) {
+      return res.status(statusCode).json({ success: false, message: error });
+    }
+
+    const challanUrl = getChallanPublicUrl(billNo, req.file.filename);
+
+    const updated = await db.tmDetail.update({
+      where: { id: tmId },
+      data: { challanUrl },
+    });
+
+    await createActivityLog({
+      title: "Challan uploaded",
+      description: `Challan uploaded for ${tm.tmNumber} (${tm.truckNo}) on bill ${billNo}`,
+      entityType: "ORDER",
+      entityId: tm.orderId,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
+
+    logger.info(`Challan uploaded for TM ${tmId} on ${billNo}: ${challanUrl}`);
+
+    return res.status(200).json({
+      success: true,
+      message: "Challan uploaded successfully",
+      data: updated,
+    });
+  } catch (error) {
+    logger.error("Error uploading challan:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload challan",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Accept or reject one of the bill's TMs.
+ *
+ * Purely a record shown against the TM on the bill detail page — the billed
+ * amount comes from the order's quantity and does not change when a TM is
+ * rejected.
  */
 export const updateTmApproval = async (req, res) => {
   try {
-    const { err, status: validationStatus } = await validatorFunction(req.body, updateTmApprovalValidation);
+    const { billNo, tmId } = req.params;
+    const { err, status: validationStatus } = await validatorFunction(
+      { ...req.body, billNo, tmId },
+      updateTmApprovalValidation,
+    );
 
     if (!validationStatus) {
       return res.status(422).json({
@@ -661,7 +774,7 @@ export const updateTmApproval = async (req, res) => {
       });
     }
 
-    const { orderId, tmId, approvalStatus, rejectionReason } = req.body;
+    const { approvalStatus, rejectionReason } = req.body;
 
     if (approvalStatus === "REJECTED" && !rejectionReason?.trim()) {
       return res.status(400).json({
@@ -670,37 +783,19 @@ export const updateTmApproval = async (req, res) => {
       });
     }
 
+    const { error, statusCode, tm } = await resolveBillTm(billNo, tmId);
+    if (error) {
+      return res.status(statusCode).json({ success: false, message: error });
+    }
+
     logger.info(`Updating TM approval: ${tmId} -> ${approvalStatus}`);
-
-    const order = await db.order.findFirst({ where: { orderId, isDeleted: false } });
-
-    if (!order) {
-      return res.status(404).json({ success: false, message: "Order not found" });
-    }
-
-    const tm = await db.tmDetail.findFirst({
-      where: { id: tmId, orderId: order.id, isDeleted: false },
-    });
-
-    if (!tm) {
-      return res.status(404).json({ success: false, message: "TM detail not found" });
-    }
-
-    // An issued bill was calculated from the TMs as they were; changing an
-    // approval afterwards would silently desync the amount.
-    const bill = await db.bill.findFirst({ where: { orderId: order.id, isDeleted: false } });
-    if (bill && LOCKED_BILL_STATUSES.includes(bill.status)) {
-      return res.status(409).json({
-        success: false,
-        message: `Bill ${bill.billNo} is ${bill.status} — TM approvals can no longer be changed`,
-      });
-    }
 
     const updated = await db.tmDetail.update({
       where: { id: tmId },
       data: {
         approvalStatus,
-        rejectionReason: approvalStatus === "REJECTED" ? rejectionReason.trim() : null,
+        rejectionReason:
+          approvalStatus === "REJECTED" ? rejectionReason.trim() : null,
         approvedAt: approvalStatus === "ACCEPTED" ? new Date() : null,
       },
     });
@@ -709,10 +804,10 @@ export const updateTmApproval = async (req, res) => {
       title: `TM ${approvalStatus.toLowerCase()}`,
       description:
         approvalStatus === "REJECTED"
-          ? `${tm.tmNumber} (${tm.truckNo}) rejected on order ${orderId} — ${rejectionReason.trim()}`
-          : `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus.toLowerCase()} on order ${orderId}`,
+          ? `${tm.tmNumber} (${tm.truckNo}) rejected on bill ${billNo} — ${rejectionReason.trim()}`
+          : `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus.toLowerCase()} on bill ${billNo}`,
       entityType: "ORDER",
-      entityId: order.id,
+      entityId: tm.orderId,
       action: "STATUS_CHANGED",
       createdById: Number(req.user?.data?.id) || null,
     });
@@ -723,9 +818,6 @@ export const updateTmApproval = async (req, res) => {
       success: true,
       message: `TM ${approvalStatus.toLowerCase()} successfully`,
       data: updated,
-      ...(bill && {
-        billWarning: `Bill ${bill.billNo} was generated before this change — recalculate it to pick up the new quantity`,
-      }),
     });
   } catch (error) {
     logger.error("Error updating TM approval:", error);

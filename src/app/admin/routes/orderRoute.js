@@ -16,6 +16,12 @@ router.get('/:orderId/technician/list', verifyToken, orderController.getOrderTec
 router.put('/technician', verifyToken, orderController.updateOrderTechnician);
 router.delete('/:orderId/technician/:orderTechnicianId', verifyToken, orderController.deleteOrderTechnician);
 
+// Order TM routes
+router.post('/:orderId/tm', verifyToken, orderController.createOrderTm);
+router.get('/:orderId/tm', verifyToken, orderController.getOrderTms);
+router.put('/:orderId/tm/:tmId', verifyToken, orderController.updateOrderTm);
+router.delete('/:orderId/tm/:tmId', verifyToken, orderController.deleteOrderTm);
+
 // Order routes
 router.get('/field-techs', verifyToken, orderController.listFieldTechs);
 router.get('/', verifyToken, orderController.listOrders);

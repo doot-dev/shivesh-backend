@@ -393,13 +393,18 @@ model TmDetail {
   tmNumber        String
   truckNo         String
   qty             String
-  batchStartTime  String
-  batchEndTime    String
-  challanNo       String
-  challanUrl      String?
+  // Everything below the truck and its load is filled in as the TM runs, so a
+  // TM can be planned on the order before any of it is known.
+  dispatchTime    String?
+  arrivalTime     String?
+  batchStartTime  String?
+  batchEndTime    String?
+  challanNo       String?
+  challanUrl      String? // uploaded challan PDF/photo
+  // Where the truck is. Billing is driven by the order, not by TMs.
   status          DeliveryStatus @default(ASSIGNED)
-  // Billing approval, kept separate from `status` (which tracks where the
-  // truck is). Only ACCEPTED trucks are billed.
+  // Per-truck accept/reject shown on the bill detail page. Does not affect the
+  // billed amount — a rejection is a record, not a deduction.
   approvalStatus  TmApproval     @default(PENDING)
   rejectionReason String?        @db.Text
   approvedAt      DateTime?

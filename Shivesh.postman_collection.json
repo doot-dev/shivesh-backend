@@ -2323,6 +2323,1153 @@
 							"response": []
 						}
 					]
+				},
+				{
+					"name": "Orders",
+					"item": [
+						{
+							"name": "List Orders",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders?page=1&limit=20&status=&clientId=&assignedToId=&search=&includeDeleted=false",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										},
+										{
+											"key": "status",
+											"value": ""
+										},
+										{
+											"key": "clientId",
+											"value": ""
+										},
+										{
+											"key": "assignedToId",
+											"value": ""
+										},
+										{
+											"key": "search",
+											"value": ""
+										},
+										{
+											"key": "includeDeleted",
+											"value": "false"
+										}
+									]
+								},
+								"description": "Paginated order list.\n\nQuery params (all optional):\n- page (default 1), limit (default 20)\n- status: NEW | CONFIRMED | IN_PROGRESS | DELIVERED | COMPLETED | CANCELLED\n  When omitted, COMPLETED orders are excluded.\n- clientId: business client id, e.g. CL-2025-0004\n- assignedToId: numeric user id of an assigned field technician\n- search: matches orderId, productName or project name\n- includeDeleted: 'true' also returns soft-deleted orders (each carrying isDeleted: true). Anything else keeps them hidden."
+							},
+							"response": []
+						},
+						{
+							"name": "Create Order",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"projectId\": \"PRJ-2026-0019\",\n  \"clientId\": \"CL-2025-0004\",\n  \"productName\": \"RMC-NEW\",\n  \"productGrade\": \"M10\",\n  \"quantity\": \"12\",\n  \"deliveryAddress\": \"Kalpataru Immensa, Thane West, Mumbai - 400607\",\n  \"date\": \"2026-09-01\",\n  \"time\": \"10:30 AM\",\n  \"vendors\": [\n    {\n      \"vendorId\": 1,\n      \"vendorLocationId\": 36,\n      \"vendorHandlerId\": 45\n    }\n  ],\n  \"technicians\": [\n    {\n      \"userId\": 38\n    }\n  ],\n  \"tmDetails\": [\n    {\n      \"truckNo\": \"MH 01 4756\",\n      \"qty\": \"6 m3\",\n      \"dispatchTime\": \"09:30 AM\",\n      \"arrivalTime\": \"09:55 AM\",\n      \"batchStartTime\": \"10:00 AM\",\n      \"batchEndTime\": \"12:00 PM\",\n      \"challanNo\": \"284897593\"\n    },\n    {\n      \"truckNo\": \"MH 01 4758\",\n      \"qty\": \"6 m3\",\n      \"dispatchTime\": \"11:30 AM\",\n      \"arrivalTime\": \"11:50 AM\",\n      \"batchStartTime\": \"10:00 AM\",\n      \"batchEndTime\": \"12:00 PM\",\n      \"challanNo\": \"284997593\"\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders"
+									]
+								},
+								"description": "Required: projectId, clientId, productName, productGrade, quantity.\nOptional: deliveryAddress, date, time, vendors[], technicians[], tmDetails[].\n\n- projectId / clientId are business ids (PRJ-…, CL-…), not numeric ids.\n- vendors[]: vendorId required per entry; a handler must belong to the given location, and the location to the vendor.\n- technicians[]: [{ \"userId\": 38 }] or plain [38]; each must be a FIELD_TECHNICIAN.\n- tmDetails[]: each entry needs only truckNo and qty. dispatchTime, arrivalTime, batchStartTime, batchEndTime, challanNo are optional and can be filled in later via PUT /orders/:orderId/tm/:tmId. TMs are numbered TM 01, TM 02 … by array position.\n\norderId (ORD-YYYY-0001), status NEW and deliveryStatus ASSIGNED are set by the server."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Order Details",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}?includeDeleted=false",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}"
+									],
+									"query": [
+										{
+											"key": "includeDeleted",
+											"value": "false"
+										}
+									]
+								},
+								"description": "Full order with project, client, vendors, technicians, tmDetails and comments.\nPass includeDeleted=true to fetch a soft-deleted order instead of getting a 404."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Order",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"productName\": \"Ready Mix Concrete\",\n  \"productGrade\": \"M30\",\n  \"quantity\": \"35 m3\",\n  \"deliveryAddress\": \"A-243, Govind Marg, Calgiri Road, Jaipur\",\n  \"date\": \"2026-08-06\",\n  \"time\": \"11:00 AM\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}"
+									]
+								},
+								"description": "Order summary only — every field is optional, send just what changes.\nProject, client, vendors and technicians are NOT editable here; use the vendor / technician endpoints below.\nquantity is a string. deliveryAddress, date and time can be sent as null to clear them."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Order Status",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"status\": \"IN_PROGRESS\",\n  \"deliveryStatus\": \"IN_TRANSIT\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/status",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"status"
+									]
+								},
+								"description": "At least one of status / deliveryStatus is required.\n- status: NEW | CONFIRMED | IN_PROGRESS | DELIVERED | COMPLETED | CANCELLED\n- deliveryStatus: ASSIGNED | IN_TRANSIT | DELIVERED | COMPLETED\n\nSetting status to COMPLETED generates the bill for that order automatically. The response then carries a `bill` object, or a `billError` string if billing could not run (e.g. no price configured) — the status change succeeds either way.\n\nOnce the bill exists, its detail page is where each TM gets its challan uploaded and gets accepted or rejected."
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Order",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}"
+									]
+								},
+								"description": "Soft delete (isDeleted = true)."
+							},
+							"response": []
+						},
+						{
+							"name": "Add Comment",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"message\": \"Delivery rescheduled to 11:00 AM\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/comments",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"comments"
+									]
+								},
+								"description": "message is required and must be non-blank. Posted as authorType ADMIN; the client and every assigned field technician are notified."
+							},
+							"response": []
+						},
+						{
+							"name": "List Field Technicians",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/field-techs",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"field-techs"
+									]
+								},
+								"description": "All active FIELD_TECHNICIAN users — use the returned id as userId when assigning."
+							},
+							"response": []
+						},
+						{
+							"name": "Add Vendor to Order",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"vendorId\": 1,\n  \"vendorLocationId\": 1,\n  \"vendorHandlerId\": 1\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/vendor/create",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"vendor",
+										"create"
+									]
+								},
+								"description": "Required: orderId (string), vendorId (integer).\nOptional: vendorLocationId, vendorHandlerId (integers).\nA handler is only valid together with its own location. The same vendor may be added twice from different plants; a repeat of the exact vendor + location pair returns 409."
+							},
+							"response": []
+						},
+						{
+							"name": "List Order Vendors",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/vendor/list",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"vendor",
+										"list"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Order Vendor",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"orderVendorId\": \"{{orderVendorId}}\",\n  \"orderId\": \"{{orderId}}\",\n  \"vendorId\": 2,\n  \"vendorLocationId\": 3,\n  \"vendorHandlerId\": 4\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/vendor",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"vendor"
+									]
+								},
+								"description": "Required: orderVendorId (the OrderVendor row id, from the vendor list), orderId.\nOptional: vendorId, vendorLocationId, vendorHandlerId — omitted fields keep their current value, but the whole vendor/location/handler triple is re-validated together."
+							},
+							"response": []
+						},
+						{
+							"name": "Remove Vendor from Order",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/vendor/{{orderVendorId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"vendor",
+										"{{orderVendorId}}"
+									]
+								},
+								"description": "Soft delete of the order-vendor link."
+							},
+							"response": []
+						},
+						{
+							"name": "Assign Technician to Order",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"userId\": 3\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/technician/create",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"technician",
+										"create"
+									]
+								},
+								"description": "Required: orderId (string), userId (integer, role FIELD_TECHNICIAN).\nRe-assigning the same technician returns 409."
+							},
+							"response": []
+						},
+						{
+							"name": "List Order Technicians",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/technician/list",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"technician",
+										"list"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "Update Order Technician",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"orderTechnicianId\": \"{{orderTechnicianId}}\",\n  \"orderId\": \"{{orderId}}\",\n  \"userId\": 5\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/technician",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"technician"
+									]
+								},
+								"description": "Swaps the technician on an existing assignment.\nAll three fields are required: orderTechnicianId (row id from the technician list), orderId, userId."
+							},
+							"response": []
+						},
+						{
+							"name": "Remove Technician from Order",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/technician/{{orderTechnicianId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"technician",
+										"{{orderTechnicianId}}"
+									]
+								},
+								"description": "Soft delete of the order-technician link."
+							},
+							"response": []
+						},
+						{
+							"name": "Add TM to Order",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"truckNo\": \"MH 01 9999\",\n  \"qty\": \"4 m3\",\n  \"dispatchTime\": \"01:00 PM\",\n  \"arrivalTime\": \"01:20 PM\",\n  \"batchStartTime\": \"01:30 PM\",\n  \"batchEndTime\": \"02:30 PM\",\n  \"challanNo\": \"284997594\",\n  \"status\": \"ASSIGNED\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/tm",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"tm"
+									]
+								},
+								"description": "Required: truckNo, qty.\nOptional: dispatchTime, arrivalTime, batchStartTime, batchEndTime, challanNo, status (ASSIGNED | IN_TRANSIT | DELIVERED | COMPLETED, defaults ASSIGNED).\n\ntmNumber (TM 01, TM 02 …) is generated per order and never reuses a deleted number.\n\nOrders only do TM CRUD. The challan file and the accept/reject are collected later, against the generated bill — see the Bills folder."
+							},
+							"response": []
+						},
+						{
+							"name": "List Order TMs",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/tm",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"tm"
+									]
+								},
+								"description": "All non-deleted TMs on the order, oldest first. Use the returned id as tmId."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Order TM",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"truckNo\": \"MH 01 4756\",\n  \"qty\": \"6 m3\",\n  \"dispatchTime\": \"01:00 PM\",\n  \"arrivalTime\": \"01:20 PM\",\n  \"batchStartTime\": \"01:30 PM\",\n  \"batchEndTime\": \"02:30 PM\",\n  \"challanNo\": \"284997594\",\n  \"status\": \"DELIVERED\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/tm/{{tmId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"tm",
+										"{{tmId}}"
+									]
+								},
+								"description": "Every field optional — send only what changes; send null to clear a timing or challanNo.\ntmNumber, challanUrl and approvalStatus cannot be changed here."
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Order TM",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/orders/{{orderId}}/tm/{{tmId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"orders",
+										"{{orderId}}",
+										"tm",
+										"{{tmId}}"
+									]
+								},
+								"description": "Soft delete.\n\nTMs are delivery tracking only and do not affect billing."
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "Bills",
+					"item": [
+						{
+							"name": "Create Bill",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"rate\": 4500,\n  \"dueDate\": \"2026-08-30\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/create",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"create"
+									]
+								},
+								"description": "Manual fallback. Orders are billed AUTOMATICALLY the moment they are set to COMPLETED via PUT /orders/:orderId/status — use this only for a COMPLETED order that has no bill yet (e.g. billing was skipped because no price was configured).\n\nRequired: orderId.\nOptional: rate (numeric, >= 0) — overrides the project pricing for that product + grade; without it a ProjectProduct price must exist. dueDate (date string).\n\nquantity comes from the ORDER's quantity field, amount = quantity × rate, status starts at PENDING, billNo is BILL-YYYY-0001.\n\n400 when the order is not COMPLETED, or its quantity does not parse as a positive number; 409 when the order already has a bill."
+							},
+							"response": []
+						},
+						{
+							"name": "List Bills",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/list?page=1&limit=20&status=&clientId=&search=",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"list"
+									],
+									"query": [
+										{
+											"key": "page",
+											"value": "1"
+										},
+										{
+											"key": "limit",
+											"value": "20"
+										},
+										{
+											"key": "status",
+											"value": ""
+										},
+										{
+											"key": "clientId",
+											"value": ""
+										},
+										{
+											"key": "search",
+											"value": ""
+										}
+									]
+								},
+								"description": "Query params (all optional):\n- page (default 1), limit (default 20)\n- status: PENDING | SENT | PAID | OVERDUE | CANCELLED\n- clientId: business client id, e.g. CL-2025-0004\n- search: matches billNo, order id or client company name"
+							},
+							"response": []
+						},
+						{
+							"name": "Get Bill by Order",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/order/{{orderId}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"order",
+										"{{orderId}}"
+									]
+								},
+								"description": "404 if the order has no bill yet."
+							},
+							"response": []
+						},
+						{
+							"name": "Get Bill Details",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/{{billNo}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"{{billNo}}"
+									]
+								},
+								"description": "Bill page payload: billDetails, fieldTechnicians, tmDetails and activityLog."
+							},
+							"response": []
+						},
+						{
+							"name": "Upload TM Challan",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "challan",
+											"type": "file",
+											"src": [],
+											"description": "PDF or image of the challan"
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/{{billNo}}/tm/{{tmId}}/challan",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"{{billNo}}",
+										"tm",
+										"{{tmId}}",
+										"challan"
+									]
+								},
+								"description": "multipart/form-data with a single file field named `challan`.\nAllowed: .pdf .jpg .jpeg .png, max 10MB.\nDo NOT set Content-Type manually — Postman adds the boundary.\n\nCollected against a generated bill: the bill detail page lists the order's TMs and this is the '+ Add challan' action on each one. Sets challanUrl on the TM, viewable at {{base_url}}<challanUrl> ('View challan'). Re-uploading replaces it.\n\ntmId comes from the bill payload's tmDetails[].id."
+							},
+							"response": []
+						},
+						{
+							"name": "TM Approval (Accept / Reject)",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"approvalStatus\": \"ACCEPTED\",\n  \"rejectionReason\": \"\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/{{billNo}}/tm/{{tmId}}/approval",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"{{billNo}}",
+										"tm",
+										"{{tmId}}",
+										"approval"
+									]
+								},
+								"description": "Required: approvalStatus (PENDING | ACCEPTED | REJECTED).\nrejectionReason required and non-blank when REJECTED; cleared otherwise. approvedAt is stamped on ACCEPTED.\n\nReviewed against a generated bill — this is the Accepted/Rejected badge on each TM of the bill detail page. Purely a record: rejecting a TM does NOT reduce the billed amount.\n\ntmId comes from the bill payload's tmDetails[].id."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Bill",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"billNo\": \"{{billNo}}\",\n  \"rate\": 4700,\n  \"dueDate\": \"2026-09-05\",\n  \"recalculate\": true\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills"
+									]
+								},
+								"description": "Required: billNo.\nOptional: rate (numeric, >= 0), dueDate (send null to clear), recalculate (boolean).\n\nrecalculate: true re-reads the order's quantity; amount is always recomputed as quantity × rate.\n409 when the bill is PAID or CANCELLED — those are locked."
+							},
+							"response": []
+						},
+						{
+							"name": "Update Bill Status",
+							"request": {
+								"method": "PUT",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									},
+									{
+										"key": "Content-Type",
+										"value": "application/json",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"billNo\": \"{{billNo}}\",\n  \"status\": \"SENT\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/status",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"status"
+									]
+								},
+								"description": "Both fields required. status: PENDING | SENT | PAID | OVERDUE | CANCELLED.\npaidAt is stamped on the first move to PAID and cleared when moving away from PAID. SENT / PAID / OVERDUE notify the client."
+							},
+							"response": []
+						},
+						{
+							"name": "Upload Bill Document",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"body": {
+									"mode": "formdata",
+									"formdata": [
+										{
+											"key": "document",
+											"type": "file",
+											"src": [],
+											"description": "PDF or image — signed challan, scanned bill, etc."
+										}
+									]
+								},
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/{{billNo}}/document",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"{{billNo}}",
+										"document"
+									]
+								},
+								"description": "multipart/form-data with a single file field named `document`.\nAllowed: .jpg .jpeg .png .pdf, max 10MB.\nDo NOT set Content-Type manually — Postman adds the boundary.\n\nReturns the bill with documentUrl set, servable at {{base_url}}<documentUrl>."
+							},
+							"response": []
+						},
+						{
+							"name": "Delete Bill",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Authorization",
+										"value": "Bearer {{authtoken}}",
+										"type": "text"
+									}
+								],
+								"url": {
+									"raw": "{{base_url}}/api/v1/admin/bills/{{billNo}}",
+									"host": [
+										"{{base_url}}"
+									],
+									"path": [
+										"api",
+										"v1",
+										"admin",
+										"bills",
+										"{{billNo}}"
+									]
+								},
+								"description": "Soft delete. 409 when the bill is PAID — cancel it via Update Bill Status instead."
+							},
+							"response": []
+						}
+					]
 				}
 			]
 		}
@@ -2372,6 +3519,26 @@
 		},
 		{
 			"key": "authtoken",
+			"value": ""
+		},
+		{
+			"key": "orderId",
+			"value": "ORD-2026-0001"
+		},
+		{
+			"key": "billNo",
+			"value": "BILL-2026-0001"
+		},
+		{
+			"key": "orderVendorId",
+			"value": ""
+		},
+		{
+			"key": "orderTechnicianId",
+			"value": ""
+		},
+		{
+			"key": "tmId",
 			"value": ""
 		}
 	]

@@ -44,3 +44,34 @@ export const updateOrderTechnicianValidation = {
   orderId: "required|string",
   userId: "required|integer",
 };
+
+// Order TM Validations
+//
+// Only the truck and its load are required: a TM can be planned when the order
+// is created, with timings and the challan filled in as it actually runs.
+// `tmNumber` is generated per order. `challanUrl` and `approvalStatus` are
+// collected against the bill, not here.
+export const createOrderTmValidation = {
+  orderId: "required|string",
+  truckNo: "required|string",
+  qty: "required|string",
+  dispatchTime: "string",
+  arrivalTime: "string",
+  batchStartTime: "string",
+  batchEndTime: "string",
+  challanNo: "string",
+  status: "in:ASSIGNED,IN_TRANSIT,DELIVERED,COMPLETED",
+};
+
+export const updateOrderTmValidation = {
+  orderId: "required|string",
+  tmId: "required|string",
+  truckNo: "string",
+  qty: "string",
+  dispatchTime: "string",
+  arrivalTime: "string",
+  batchStartTime: "string",
+  batchEndTime: "string",
+  challanNo: "string",
+  status: "in:ASSIGNED,IN_TRANSIT,DELIVERED,COMPLETED",
+};

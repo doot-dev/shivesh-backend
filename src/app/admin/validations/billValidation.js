@@ -17,9 +17,10 @@ export const updateBillStatusValidation = {
   status: "required|in:PENDING,SENT,PAID,OVERDUE,CANCELLED",
 };
 
-// TM approval — only ACCEPTED trucks are billed, and a rejection must say why.
+// TM approval — a rejection must say why. Reviewed against a generated bill;
+// it does not change the billed amount.
 export const updateTmApprovalValidation = {
-  orderId: "required|string",
+  billNo: "required|string",
   tmId: "required|string",
   approvalStatus: "required|in:PENDING,ACCEPTED,REJECTED",
   rejectionReason: "string",

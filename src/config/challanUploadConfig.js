@@ -7,16 +7,16 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Base upload directory — must sit under the `public/uploads` tree that app.js
-// serves statically, or documentUrl points at a file nothing can fetch.
-const baseUploadDir = path.join(__dirname, '../../public/uploads/bills');
+// serves statically, or challanUrl points at a file nothing can fetch.
+const baseUploadDir = path.join(__dirname, '../../public/uploads/challans');
 if (!fs.existsSync(baseUploadDir)) {
   fs.mkdirSync(baseUploadDir, { recursive: true });
 }
 
-// Configure storage
+// Configure storage — one folder per bill, so a bill's challans stay together
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const billNo = req.params.billNo || req.body.billNo;
+    const billNo = req.params.billNo;
 
     if (!billNo) {
       return cb(new Error('Bill number is required'));
@@ -53,7 +53,7 @@ const fileFilter = (req, file, cb) => {
 };
 
 // Create multer upload instance
-export const uploadBillDoc = multer({
+export const uploadChallan = multer({
   storage: storage,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
@@ -62,15 +62,15 @@ export const uploadBillDoc = multer({
 });
 
 // Middleware for single file upload
-export const uploadSingleBillDoc = uploadBillDoc.single('document');
+export const uploadSingleChallan = uploadChallan.single('challan');
 
 // Helper function to get public URL for uploaded file
-export function getBillDocPublicUrl(billNo, filename) {
-  return `/uploads/bills/${billNo}/${filename}`;
+export function getChallanPublicUrl(billNo, filename) {
+  return `/uploads/challans/${billNo}/${filename}`;
 }
 
 // Helper function to delete uploaded file
-export async function deleteBillDocFile(billNo, filename) {
+export async function deleteChallanFile(billNo, filename) {
   try {
     const filePath = path.join(baseUploadDir, billNo.toString(), filename);
     if (fs.existsSync(filePath)) {
@@ -79,7 +79,7 @@ export async function deleteBillDocFile(billNo, filename) {
     }
     return false;
   } catch (error) {
-    console.error('Error deleting bill document:', error);
+    console.error('Error deleting challan file:', error);
     return false;
   }
 }
