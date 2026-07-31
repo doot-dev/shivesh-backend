@@ -351,6 +351,9 @@ export const getBillList = async (req, res) => {
               date: true,
               client: { select: { clientId: true, companyName: true } },
               project: { select: { projectId: true, siteName: true } },
+              _count: {
+                select: { tmDetails: { where: { isDeleted: false } } },
+              },
             },
           },
         },
@@ -361,7 +364,13 @@ export const getBillList = async (req, res) => {
       db.bill.count({ where }),
     ]);
 
-    return res.status(200).json({ success: true, data: bills, total, page: pageNum });
+    const data = bills.map((bill) => ({
+      ...bill,
+      orderId: bill.order.orderId,
+      assignedTrucks: bill.order._count.tmDetails,
+    }));
+
+    return res.status(200).json({ success: true, data, total, page: pageNum });
   } catch (error) {
     logger.error("Error fetching bills:", error);
     return res.status(500).json({

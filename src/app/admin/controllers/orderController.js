@@ -179,19 +179,12 @@ export async function listOrders(req, res) {
       clientId,
       assignedToId,
       search,
-      includeDeleted,
     } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
-    // Soft-deleted orders stay hidden unless asked for. When included they come
-    // back carrying isDeleted: true, so the caller can mark them rather than
-    // mistake them for live orders.
-    const showDeleted = includeDeleted === "true";
-
     const where = {
-      ...(!showDeleted && { isDeleted: false }),
-      ...(status ? { status } : { status: { not: "COMPLETED" } }),
+      ...(status && { status }),
       ...(assignedToId && {
         technicians: {
           some: { userId: parseInt(assignedToId), isDeleted: false },
@@ -289,13 +282,11 @@ export async function createOrder(req, res) {
     console.log("createOrder req.body:", req.body);
 
     if (!projectId || !clientId || !productName || !productGrade || !quantity) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message:
-            "projectId, clientId, productName, productGrade and quantity are required",
-        });
+      return res.status(400).json({
+        success: false,
+        message:
+          "projectId, clientId, productName, productGrade and quantity are required",
+      });
     }
 
     if (
@@ -303,12 +294,10 @@ export async function createOrder(req, res) {
       !Array.isArray(technicians) ||
       !Array.isArray(tmDetails)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "vendors, technicians and tmDetails must be arrays",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "vendors, technicians and tmDetails must be arrays",
+      });
     }
 
     const project = await db.project.findFirst({
@@ -354,12 +343,10 @@ export async function createOrder(req, res) {
       ...new Set(technicians.map((t) => parseInt(t?.userId ?? t))),
     ];
     if (technicianIds.some((id) => Number.isNaN(id))) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Each technician requires a numeric userId",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Each technician requires a numeric userId",
+      });
     }
 
     if (technicianIds.length) {
@@ -373,12 +360,10 @@ export async function createOrder(req, res) {
       });
 
       if (found.length !== technicianIds.length) {
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: "One or more field technicians not found",
-          });
+        return res.status(404).json({
+          success: false,
+          message: "One or more field technicians not found",
+        });
       }
     }
 
@@ -570,12 +555,10 @@ export async function updateOrderStatus(req, res) {
     const { status, deliveryStatus } = req.body;
 
     if (!status && !deliveryStatus) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "status or deliveryStatus is required",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "status or deliveryStatus is required",
+      });
     }
 
     const order = await db.order.findFirst({
