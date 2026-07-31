@@ -338,10 +338,11 @@ model Bill {
   quantity  Float // total accepted TM quantity at generation time
   rate      Float // per-unit rate applied
   amount    Float // quantity * rate
-  status    BillStatus @default(PENDING)
-  issueDate DateTime?
-  dueDate   DateTime?
-  paidAt    DateTime?
+  status      BillStatus @default(PENDING)
+  documentUrl String? // uploaded bill PDF/photo
+  issueDate   DateTime?
+  dueDate     DateTime?
+  paidAt      DateTime?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   isDeleted Boolean    @default(false)

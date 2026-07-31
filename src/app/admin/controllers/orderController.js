@@ -159,7 +159,7 @@ export async function listOrders(req, res) {
 
     const where = {
       isDeleted: false,
-      ...(status && { status }),
+      ...(status ? { status } : { status: { not: "COMPLETED" } }),
       ...(assignedToId && {
         technicians: {
           some: { userId: parseInt(assignedToId), isDeleted: false },

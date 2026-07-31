@@ -8,6 +8,7 @@ import {
   updateTmApprovalValidation,
 } from "../validations/billValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
+import { getBillDocPublicUrl } from "../../../config/billUploadConfig.js";
 
 // Bills are locked once money has moved or the bill is void.
 const LOCKED_BILL_STATUSES = ["PAID", "CANCELLED"];
@@ -349,6 +350,50 @@ export const getBillDetails = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch bill details",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Attach an uploaded PDF/photo (e.g. signed challan, physical bill scan) to a bill.
+ */
+export const uploadBillDocument = async (req, res) => {
+  try {
+    const { billNo } = req.params;
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+
+    const bill = await db.bill.findFirst({ where: { billNo, isDeleted: false } });
+
+    if (!bill) {
+      return res.status(404).json({ success: false, message: "Bill not found" });
+    }
+
+    const documentUrl = getBillDocPublicUrl(billNo, req.file.filename);
+
+    const updated = await db.bill.update({
+      where: { id: bill.id },
+      data: { documentUrl },
+    });
+
+    await createActivityLog({
+      title: "Bill document uploaded",
+      description: `Document uploaded for bill ${billNo}`,
+      entityType: "BILL",
+      entityId: bill.id,
+      action: "UPDATE",
+      createdById: req.user?.id,
+    });
+
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    logger.error("Error uploading bill document:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload bill document",
       error: error.message,
     });
   }
