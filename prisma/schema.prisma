@@ -297,9 +297,27 @@ model Order {
   technicians     OrderTechnician[]
   vendors         OrderVendor[]
   tmDetails       TmDetail[]
+  cubeTests       CubeTest[]
 
   @@index([projectId])
   @@index([clientId])
+}
+
+model CubeTest {
+  id          String         @id @default(cuid())
+  orderId     String
+  castingDate DateTime
+  quantity    String
+  period      CubeTestPeriod
+  fromDate    DateTime
+  toDate      DateTime
+  fileUrl     String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  isDeleted   Boolean        @default(false)
+  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
 }
 
 model Bill {
@@ -450,6 +468,13 @@ enum DeliveryStatus {
   IN_TRANSIT
   DELIVERED
   COMPLETED
+}
+
+enum CubeTestPeriod {
+  SEVEN_DAYS
+  FOURTEEN_DAYS
+  TWENTYONE_DAYS
+  CUSTOM
 }
 
 enum TmApproval {
