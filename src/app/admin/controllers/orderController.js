@@ -13,6 +13,16 @@ import {
 } from "../validations/orderValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { generateBillForOrder } from "./billController.js";
+import { emitOrderEvent } from "../../../realtime/socketServer.js";
+
+/** userIds of the techs assigned to an order — the WS emit target list. */
+async function assignedTechUserIds(orderDbId) {
+  const rows = await db.orderTechnician.findMany({
+    where: { orderId: orderDbId, isDeleted: false },
+    select: { userId: true },
+  });
+  return rows.map((r) => r.userId);
+}
 
 /**
  * Normalise one TM from a request body into Prisma create data.
@@ -584,6 +594,21 @@ export async function updateOrderStatus(req, res) {
       type: "STATUS_UPDATED",
     });
 
+    // Live push to the client's app and any open order screen.
+    emitOrderEvent(
+      orderId,
+      "order:status",
+      {
+        orderId,
+        status: updated.status,
+        deliveryStatus: updated.deliveryStatus,
+      },
+      {
+        clientDbId: order.clientId,
+        techUserIds: await assignedTechUserIds(order.id),
+      },
+    );
+
     await createActivityLog({
       title: "Order status updated",
       description: `Order ${orderId} status changed to ${status || deliveryStatus}`,
@@ -706,6 +731,12 @@ export async function addComment(req, res) {
       title: "New Comment from Admin",
       message: `Admin commented on order ${orderId}`,
       type: "COMMENT_ADDED",
+    });
+
+    // Real-time fan-out so the client sees the admin reply without refreshing.
+    emitOrderEvent(orderId, "comment:new", comment, {
+      clientDbId: order.clientId,
+      techUserIds: await assignedTechUserIds(order.id),
     });
 
     return res.status(201).json({ success: true, data: comment });

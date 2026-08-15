@@ -1,6 +1,16 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
 import { sendNotification } from '../../../helper/notificationHelper.js';
+import { emitOrderEvent } from '../../../realtime/socketServer.js';
+
+/** userIds of the techs assigned to an order — the WS emit target list. */
+async function assignedTechUserIds(orderDbId) {
+  const rows = await db.orderTechnician.findMany({
+    where: { orderId: orderDbId, isDeleted: false },
+    select: { userId: true },
+  });
+  return rows.map((r) => r.userId);
+}
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -217,6 +227,15 @@ export async function clientCreateOrder(req, res) {
       orderId: order.id,
     });
 
+    // Live push so the client's other devices and the admin panel see it now.
+    const created = await db.order.findFirst({
+      where: { id: order.id },
+      select: buildOrderSelect(),
+    });
+    emitOrderEvent(order.orderId, 'order:new', formatOrder(created), {
+      clientDbId,
+    });
+
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
@@ -350,6 +369,21 @@ export async function techUpdateStatus(req, res) {
       orderId: order.id,
     });
 
+    emitOrderEvent(
+      orderId,
+      'order:status',
+      {
+        orderId,
+        status: updated.status,
+        deliveryStatus: updated.deliveryStatus,
+        isActive: orderIsActive(updated.status),
+      },
+      {
+        clientDbId: order.clientId,
+        techUserIds: await assignedTechUserIds(order.id),
+      },
+    );
+
     return res.status(200).json({ success: true, message: 'Status updated', data: { deliveryStatus: updated.deliveryStatus } });
   } catch (error) {
     logger.error('techUpdateStatus error:', error);
@@ -431,6 +465,12 @@ export async function addComment(req, res) {
         })
       )
     );
+
+    // Real-time fan-out: the comment appears on every open device immediately.
+    emitOrderEvent(orderId, 'comment:new', comment, {
+      clientDbId: order.clientId,
+      techUserIds: await assignedTechUserIds(order.id),
+    });
 
     return res.status(201).json({ success: true, data: comment });
   } catch (error) {
