@@ -1,6 +1,7 @@
 import app from './src/app.js';
 import logger from './src/helper/logger.js';
 import { databaseConnection } from './src/config/database.js';
+import { initSocketServer } from './src/realtime/socketServer.js';
 
 const PORT = process.env.PORT || 3001;
 let server; // Declare server variable at module level
@@ -17,7 +18,11 @@ const startServer = async () => {
       logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`📍 Health check: http://localhost:${PORT}/health`);
       logger.info(`🔗 API endpoint: http://localhost:${PORT}/api/v1/admin`);
+      logger.info(`🔌 WebSocket:    ws://localhost:${PORT}/ws`);
     });
+
+    // Live order updates share the HTTP port via the upgrade handshake.
+    initSocketServer(server);
 
     // Graceful shutdown
     const gracefulShutdown = async () => {

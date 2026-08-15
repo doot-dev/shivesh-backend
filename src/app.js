@@ -11,6 +11,7 @@ import { databaseConnection } from './config/database.js';
 import { initFirebase } from './helper/firebase.js';
 import adminApiRoutes from './app/admin/routes/index.js';
 import mobileApiRoutes from './app/mobile/routes/index.js';
+import { getSocketCount } from './realtime/socketServer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -59,7 +60,8 @@ app.get('/health', async (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: process.env.NODE_ENV || 'development',
-    database: dbHealth
+    database: dbHealth,
+    websocket: { connected: getSocketCount() }
   });
 });
 
