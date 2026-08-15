@@ -5,9 +5,15 @@ const { verify } = jsonwebtoken;
 function makeVerifier(requiredType) {
   return async function (req, res, next) {
     try {
+      // The Authorization header MUST win over the body.
+      //
+      // `PUT /fcm-token` posts `{ token: <firebase-token> }`, so reading the
+      // body first made this middleware validate the *Firebase* token as the
+      // JWT and reject every call with 401 — the auth token was never even
+      // looked at. Body/query are kept only as a legacy fallback.
       const token =
-        req.body?.token ||
         req.headers['authorization']?.replace('Bearer ', '') ||
+        req.body?.token ||
         req.query?.token;
 
       if (!token) {
