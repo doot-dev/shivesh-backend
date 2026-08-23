@@ -14,6 +14,7 @@ import {
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { generateBillForOrder } from "./billController.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
+import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
 async function assignedTechUserIds(orderDbId) {
@@ -299,6 +300,14 @@ export async function createOrder(req, res) {
       });
     }
 
+    // The 3-month booking window applies to admins too, not just clients.
+    const dateCheck = validateDeliveryDate(date);
+    if (!dateCheck.valid) {
+      return res
+        .status(400)
+        .json({ success: false, message: dateCheck.message });
+    }
+
     if (
       !Array.isArray(vendors) ||
       !Array.isArray(technicians) ||
@@ -491,6 +500,14 @@ export async function updateOrder(req, res) {
 
     const { productName, productGrade, quantity, deliveryAddress, date, time } =
       req.body;
+
+    // Rescheduling is a booking too — the same 3-month window applies.
+    const dateCheck = validateDeliveryDate(date);
+    if (!dateCheck.valid) {
+      return res
+        .status(400)
+        .json({ success: false, message: dateCheck.message });
+    }
 
     logger.info(`Updating order summary: ${orderId}`);
 

@@ -2,6 +2,7 @@ import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
 import { sendNotification } from '../../../helper/notificationHelper.js';
 import { emitOrderEvent } from '../../../realtime/socketServer.js';
+import { validateDeliveryDate } from '../../../helper/deliveryDateHelper.js';
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
 async function assignedTechUserIds(orderDbId) {
@@ -74,6 +75,54 @@ function formatOrder(o) {
   };
 }
 
+/**
+ * Free-text + date-range filters for the mobile order lists, shared by the
+ * client and technician endpoints so the two can't drift apart.
+ *
+ * `q` matches the order code, project name, client company, product and grade.
+ * `dateFrom`/`dateTo` (and the `date` shorthand for a single day) filter
+ * Order.date.
+ *
+ * TWO THINGS THAT LOOK WRONG BUT ARE NOT:
+ *  1. No `mode: 'insensitive'` — the MySQL connector REJECTS that argument
+ *     ("Unknown argument `mode`"). It isn't needed: the column collation is
+ *     already case-insensitive, verified with contains 'demo' vs 'DEMO'.
+ *  2. Order.date is a STRING column, not DateTime, holding ISO `YYYY-MM-DD`.
+ *     Lexicographic gte/lte therefore range correctly — but only for that
+ *     format, so bad input is dropped rather than passed to the DB.
+ */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function buildOrderSearchFilter({ q, dateFrom, dateTo, date } = {}) {
+  const filter = {};
+
+  const term = typeof q === 'string' ? q.trim() : '';
+  if (term) {
+    filter.OR = [
+      { orderId: { contains: term } },
+      { productName: { contains: term } },
+      { productGrade: { contains: term } },
+      { deliveryAddress: { contains: term } },
+      { project: { projectName: { contains: term } } },
+      { project: { siteName: { contains: term } } },
+      { client: { companyName: { contains: term } } },
+    ];
+  }
+
+  // A single `date` is just a one-day range.
+  const from = ISO_DATE.test(date ?? '') ? date : (ISO_DATE.test(dateFrom ?? '') ? dateFrom : null);
+  const to = ISO_DATE.test(date ?? '') ? date : (ISO_DATE.test(dateTo ?? '') ? dateTo : null);
+
+  if (from || to) {
+    filter.date = {
+      ...(from ? { gte: from } : {}),
+      ...(to ? { lte: to } : {}),
+    };
+  }
+
+  return filter;
+}
+
 const DEV_CLIENT_ID = 'dev-client';
 const DEV_TECH_ID   = 'dev-tech';
 
@@ -81,7 +130,7 @@ const DEV_TECH_ID   = 'dev-tech';
 
 export async function clientListOrders(req, res) {
   try {
-    const { type = 'active', page = 1, limit = 20, projectId } = req.query;
+    const { type = 'active', page = 1, limit = 20, projectId, q, dateFrom, dateTo, date } = req.query;
     const clientDbId = req.user.data.id;
 
     // DEV BYPASS — remove before production
@@ -100,6 +149,7 @@ export async function clientListOrders(req, res) {
       isDeleted: false,
       status: { in: type === 'past' ? pastStatuses : activeStatuses },
       ...(projectId ? { project: { projectId } } : {}),
+      ...buildOrderSearchFilter({ q, dateFrom, dateTo, date }),
     };
 
     const [orders, total] = await Promise.all([
@@ -177,6 +227,13 @@ export async function clientCreateOrder(req, res) {
       return res.status(400).json({ success: false, message: 'projectId, productName, productGrade and quantity are required' });
     }
 
+    // Orders may not be booked more than 3 months out. Enforced here as well as
+    // in the app so a crafted request can't bypass the picker's date limits.
+    const dateCheck = validateDeliveryDate(date);
+    if (!dateCheck.valid) {
+      return res.status(400).json({ success: false, message: dateCheck.message });
+    }
+
     // Verify project belongs to this client
     const project = await db.project.findFirst({
       where: { projectId, clientId: clientDbId, isDeleted: false },
@@ -251,7 +308,7 @@ export async function clientCreateOrder(req, res) {
 
 export async function techListOrders(req, res) {
   try {
-    const { type = 'active', page = 1, limit = 20 } = req.query;
+    const { type = 'active', page = 1, limit = 20, q, dateFrom, dateTo, date } = req.query;
     const userId = req.user.data.id;
 
     // DEV BYPASS — remove before production
@@ -269,6 +326,7 @@ export async function techListOrders(req, res) {
       ...assignedToTech(userId),
       isDeleted: false,
       status: { in: type === 'past' ? pastStatuses : activeStatuses },
+      ...buildOrderSearchFilter({ q, dateFrom, dateTo, date }),
     };
 
     const [orders, total] = await Promise.all([
