@@ -8,6 +8,7 @@ const router = Router();
 // Profile & projects
 router.get('/profile', verifyClientToken, clientController.getProfile);
 router.put('/fcm-token', verifyClientToken, clientController.registerFcmToken);
+router.delete('/fcm-token', verifyClientToken, clientController.unregisterFcmToken);
 router.get('/projects', verifyClientToken, clientController.getProjects);
 router.get('/projects/:projectId', verifyClientToken, clientController.getProjectDetail);
 router.get('/projects/:projectId/products', verifyClientToken, clientController.getProjectProducts);
