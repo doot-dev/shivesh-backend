@@ -1,5 +1,6 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
+import { sendNotification } from '../../../helper/notificationHelper.js';
 
 // ─── Create TM detail ─────────────────────────────────────────────────────────
 
@@ -41,17 +42,15 @@ export async function createTm(req, res) {
       },
     });
 
-    // Notify client
-    await db.notification.create({
-      data: {
-        targetType: 'CLIENT',
-        targetId: order.clientId,
-        title: 'TM Details Added',
-        message: `Truck ${truckNo} details added for your order ${orderId}`,
-        type: 'STATUS_UPDATED',
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    // Notify client (DB row + push to their registered devices)
+    await sendNotification({
+      targetType: 'CLIENT',
+      targetId: order.clientId,
+      title: 'TM Details Added',
+      message: `Truck ${truckNo} details added for your order ${orderId}`,
+      type: 'STATUS_UPDATED',
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     return res.status(201).json({ success: true, data: tm });

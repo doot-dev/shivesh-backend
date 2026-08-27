@@ -27,24 +27,37 @@ export async function sendNotification({ targetType, targetId, title, message, t
 
   try {
     const deviceTokens = await db.deviceToken.findMany({
-      where: { targetType, targetId },
+      where: { targetType, targetId: String(targetId) },
       select: { token: true },
     });
 
     const tokens = deviceTokens.map((d) => d.token);
 
-    if (tokens.length > 0) {
-      await sendPushNotification({
-        tokens,
-        title,
-        body: message,
-        data: {
-          type,
-          relatedId: relatedId ?? '',
-          orderId: orderId ?? '',
-        },
+    if (tokens.length === 0) return;
+
+    // Both apps deep-link with the human order CODE (ORD-2025-0001), but
+    // `orderId` here is the cuid primary key. Sending only the cuid made every
+    // notification tap open a 404, so resolve the code and ship both.
+    let orderCode = '';
+    if (orderId) {
+      const order = await db.order.findFirst({
+        where: { id: orderId },
+        select: { orderId: true },
       });
+      orderCode = order?.orderId ?? '';
     }
+
+    await sendPushNotification({
+      tokens,
+      title,
+      body: message,
+      data: {
+        type,
+        relatedId: relatedId ?? '',
+        orderId: orderId ?? '',
+        orderCode,
+      },
+    });
   } catch (err) {
     // Never let FCM errors break the HTTP response
     logger.error('sendNotification FCM error:', err.message);
