@@ -15,6 +15,7 @@ import { createActivityLog } from "../../../helper/activityLogger.js";
 import { generateBillForOrder } from "./billController.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
+import { sendNotification } from "../../../helper/notificationHelper.js";
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
 async function assignedTechUserIds(orderDbId) {
@@ -154,7 +155,12 @@ async function resolveVendorSelection({
 }
 
 /**
- * Notify every field technician currently assigned to an order.
+ * Notify every field technician currently assigned to an order — persists the
+ * notification AND pushes it to the tech's registered devices.
+ *
+ * Goes through sendNotification rather than db.notification.create: writing the
+ * row directly (the previous behaviour) left the bell icon correct but sent no
+ * FCM push at all, so techs only ever saw order updates by opening the app.
  */
 async function notifyOrderTechnicians(order, { title, message, type }) {
   const technicians = await db.orderTechnician.findMany({
@@ -164,16 +170,14 @@ async function notifyOrderTechnicians(order, { title, message, type }) {
 
   await Promise.all(
     technicians.map((t) =>
-      db.notification.create({
-        data: {
-          targetType: "FIELD_TECH",
-          targetId: String(t.userId),
-          title,
-          message,
-          type,
-          relatedId: order.id,
-          orderId: order.id,
-        },
+      sendNotification({
+        targetType: "FIELD_TECH",
+        targetId: String(t.userId),
+        title,
+        message,
+        type,
+        relatedId: order.id,
+        orderId: order.id,
       }),
     ),
   );
@@ -435,16 +439,14 @@ export async function createOrder(req, res) {
     });
 
     // Notify client
-    await db.notification.create({
-      data: {
-        targetType: "CLIENT",
-        targetId: client.id,
-        title: "New Order Created",
-        message: `Order ${orderId} has been created for ${productName} ${productGrade} (${quantity})`,
-        type: "ORDER_CREATED",
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: client.id,
+      title: "New Order Created",
+      message: `Order ${orderId} has been created for ${productName} ${productGrade} (${quantity})`,
+      type: "ORDER_CREATED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     // Notify every assigned field tech
@@ -732,16 +734,14 @@ export async function addComment(req, res) {
     });
 
     // Notify client and every assigned field tech
-    await db.notification.create({
-      data: {
-        targetType: "CLIENT",
-        targetId: order.clientId,
-        title: "New Comment from Admin",
-        message: `Admin commented on order ${orderId}`,
-        type: "COMMENT_ADDED",
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: order.clientId,
+      title: "New Comment from Admin",
+      message: `Admin commented on order ${orderId}`,
+      type: "COMMENT_ADDED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     await notifyOrderTechnicians(order, {
@@ -1124,16 +1124,17 @@ export const createOrderTechnician = async (req, res) => {
       include: buildTechnicianInclude().include,
     });
 
-    await db.notification.create({
-      data: {
-        targetType: "FIELD_TECH",
-        targetId: String(technician.id),
-        title: "Order Assigned",
-        message: `You have been assigned to order ${orderId}`,
-        type: "ORDER_CREATED",
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    // Push straight to the newly assigned tech's devices. notifyOrderTechnicians
+    // is deliberately NOT used here: it fans out to everyone already on the
+    // order, and only this one technician should be told they were assigned.
+    await sendNotification({
+      targetType: "FIELD_TECH",
+      targetId: String(technician.id),
+      title: "Order Assigned",
+      message: `You have been assigned to order ${orderId}`,
+      type: "ORDER_ASSIGNED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     await createActivityLog({
@@ -1280,16 +1281,14 @@ export const updateOrderTechnician = async (req, res) => {
 
     // Only tell the newcomer if the assignment actually changed hands.
     if (existing.userId !== technician.id) {
-      await db.notification.create({
-        data: {
-          targetType: "FIELD_TECH",
-          targetId: String(technician.id),
-          title: "Order Assigned",
-          message: `You have been assigned to order ${orderId}`,
-          type: "ORDER_CREATED",
-          relatedId: order.id,
-          orderId: order.id,
-        },
+      await sendNotification({
+        targetType: "FIELD_TECH",
+        targetId: String(technician.id),
+        title: "Order Assigned",
+        message: `You have been assigned to order ${orderId}`,
+        type: "ORDER_ASSIGNED",
+        relatedId: order.id,
+        orderId: order.id,
       });
     }
 
@@ -1429,16 +1428,14 @@ export const createOrderTm = async (req, res) => {
       data: { orderId: order.id, ...buildTmData(req.body, tmNumber) },
     });
 
-    await db.notification.create({
-      data: {
-        targetType: "CLIENT",
-        targetId: order.clientId,
-        title: "TM Details Added",
-        message: `Truck ${truckNo} details added for your order ${orderId}`,
-        type: "STATUS_UPDATED",
-        relatedId: order.id,
-        orderId: order.id,
-      },
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: order.clientId,
+      title: "TM Details Added",
+      message: `Truck ${truckNo} details added for your order ${orderId}`,
+      type: "STATUS_UPDATED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     await createActivityLog({

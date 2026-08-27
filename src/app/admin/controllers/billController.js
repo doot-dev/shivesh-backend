@@ -8,6 +8,7 @@ import {
   updateTmApprovalValidation,
 } from "../validations/billValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
+import { sendNotification } from "../../../helper/notificationHelper.js";
 import { getBillDocPublicUrl } from "../../../config/billUploadConfig.js";
 import { getChallanPublicUrl } from "../../../config/challanUploadConfig.js";
 
@@ -624,16 +625,14 @@ export const updateBillStatus = async (req, res) => {
 
     // Tell the client their bill is ready / settled.
     if (["SENT", "PAID", "OVERDUE"].includes(status) && order) {
-      await db.notification.create({
-        data: {
-          targetType: "CLIENT",
-          targetId: order.clientId,
-          title: `Bill ${status === "SENT" ? "Received" : status === "PAID" ? "Paid" : "Overdue"}`,
-          message: `Bill ${billNo} for order ${order.orderId} is ${status.toLowerCase()}`,
-          type: "STATUS_UPDATED",
-          relatedId: order.id,
-          orderId: order.id,
-        },
+      await sendNotification({
+        targetType: "CLIENT",
+        targetId: order.clientId,
+        title: `Bill ${status === "SENT" ? "Received" : status === "PAID" ? "Paid" : "Overdue"}`,
+        message: `Bill ${billNo} for order ${order.orderId} is ${status.toLowerCase()}`,
+        type: "STATUS_UPDATED",
+        relatedId: order.id,
+        orderId: order.id,
       });
     }
 
