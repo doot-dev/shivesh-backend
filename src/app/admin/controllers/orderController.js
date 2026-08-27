@@ -199,6 +199,11 @@ export async function listOrders(req, res) {
     const limitNum = parseInt(limit);
 
     const where = {
+      // Soft-deleted orders must never reach the list. Without this the admin
+      // Orders/Cube Testing pages render deleted rows, and every follow-up call
+      // for them (e.g. GET /orders/:id/cube-test) 404s because those handlers
+      // DO filter on isDeleted.
+      isDeleted: false,
       ...(status && { status }),
       ...(assignedToId && {
         technicians: {
