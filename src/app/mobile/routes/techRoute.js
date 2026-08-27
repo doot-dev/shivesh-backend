@@ -10,6 +10,8 @@ const router = Router();
 
 // Profile & notifications
 router.get('/profile', verifyTechToken, techController.getProfile);
+router.put('/fcm-token', verifyTechToken, techController.registerFcmToken);
+router.delete('/fcm-token', verifyTechToken, techController.unregisterFcmToken);
 router.get('/notifications', verifyTechToken, techController.getNotifications);
 router.put('/notifications/:notificationId/read', verifyTechToken, techController.markNotificationRead);
 

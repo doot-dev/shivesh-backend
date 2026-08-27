@@ -1,5 +1,68 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
+import {
+  registerDeviceToken,
+  removeDeviceToken,
+  MAX_DEVICES_PER_USER,
+} from '../../../helper/deviceTokenHelper.js';
+
+// ─── Push registration ────────────────────────────────────────────────────────
+
+/**
+ * Register this device's FCM token against the signed-in field technician, so
+ * order assignments and status changes reach the phone.
+ *
+ * targetId is stringified because Notification/DeviceToken store the FIELD_TECH
+ * id as a String while User.id is an Int — mixing the two silently matches zero
+ * device rows and the push is dropped.
+ */
+export async function registerFcmToken(req, res) {
+  try {
+    const userId = req.user.data.id;
+    const { token, platform = 'android' } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'token is required' });
+    }
+
+    const { deviceCount } = await registerDeviceToken({
+      token,
+      platform,
+      targetType: 'FIELD_TECH',
+      targetId: String(userId),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'FCM token registered',
+      data: { deviceCount, maxDevices: MAX_DEVICES_PER_USER },
+    });
+  } catch (error) {
+    logger.error('registerTechFcmToken error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/**
+ * Unregister this device on logout — important on shared site tablets, where the
+ * next technician to sign in must not inherit the previous one's pushes.
+ */
+export async function unregisterFcmToken(req, res) {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'token is required' });
+    }
+
+    await removeDeviceToken(token);
+
+    return res.status(200).json({ success: true, message: 'FCM token removed' });
+  } catch (error) {
+    logger.error('unregisterTechFcmToken error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
 
 // ─── Tech profile ─────────────────────────────────────────────────────────────
 

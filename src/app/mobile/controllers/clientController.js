@@ -1,8 +1,17 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
+import {
+  registerDeviceToken,
+  removeDeviceToken,
+  MAX_DEVICES_PER_USER,
+} from '../../../helper/deviceTokenHelper.js';
 
 // ─── Client profile ───────────────────────────────────────────────────────────
 
+/**
+ * Register this device's FCM token against the signed-in client.
+ * Capped at MAX_DEVICES_PER_USER devices — a 6th login evicts the oldest.
+ */
 export async function registerFcmToken(req, res) {
   try {
     const clientDbId = req.user.data.id;
@@ -12,15 +21,41 @@ export async function registerFcmToken(req, res) {
       return res.status(400).json({ success: false, message: 'token is required' });
     }
 
-    await db.deviceToken.upsert({
-      where: { token },
-      update: { targetType: 'CLIENT', targetId: clientDbId, platform },
-      create: { token, platform, targetType: 'CLIENT', targetId: clientDbId },
+    const { deviceCount } = await registerDeviceToken({
+      token,
+      platform,
+      targetType: 'CLIENT',
+      targetId: clientDbId,
     });
 
-    return res.status(200).json({ success: true, message: 'FCM token registered' });
+    return res.status(200).json({
+      success: true,
+      message: 'FCM token registered',
+      data: { deviceCount, maxDevices: MAX_DEVICES_PER_USER },
+    });
   } catch (error) {
     logger.error('registerFcmToken error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/**
+ * Unregister this device on logout so a signed-out phone stops receiving pushes
+ * and frees one of the client's device slots.
+ */
+export async function unregisterFcmToken(req, res) {
+  try {
+    const { token } = req.body;
+
+    if (!token) {
+      return res.status(400).json({ success: false, message: 'token is required' });
+    }
+
+    await removeDeviceToken(token);
+
+    return res.status(200).json({ success: true, message: 'FCM token removed' });
+  } catch (error) {
+    logger.error('unregisterFcmToken error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }
