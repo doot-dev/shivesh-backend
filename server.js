@@ -2,6 +2,7 @@ import app from './src/app.js';
 import logger from './src/helper/logger.js';
 import { databaseConnection } from './src/config/database.js';
 import { initSocketServer } from './src/realtime/socketServer.js';
+import { startOrderReminderJob, stopOrderReminderJob } from './src/jobs/orderReminderJob.js';
 
 const PORT = process.env.PORT || 3001;
 let server; // Declare server variable at module level
@@ -24,9 +25,16 @@ const startServer = async () => {
     // Live order updates share the HTTP port via the upgrade handshake.
     initSocketServer(server);
 
+    // Daily "you haven't booked tomorrow yet" client reminder.
+    // Safe here because pm2 runs a single fork-mode instance — under cluster
+    // mode every worker would schedule its own sweep and clients would get
+    // duplicate reminders.
+    startOrderReminderJob();
+
     // Graceful shutdown
     const gracefulShutdown = async () => {
       logger.info('Shutting down gracefully...');
+      stopOrderReminderJob();
 
       server.close(async () => {
         try {
