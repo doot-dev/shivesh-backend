@@ -599,7 +599,7 @@ export const createProjectProduct = async (req, res) => {
       });
     }
 
-    const { projectId, productName, productGrade, costPrice } = req.body;
+    const { projectId, productName, productGrade, costPrice, subcategory } = req.body;
 
     logger.info(`Creating product for project: ${projectId}`);
 
@@ -624,6 +624,8 @@ export const createProjectProduct = async (req, res) => {
         projectId: project.id,
         productName,
         productGrade,
+        // Copied by value from the Subcategory master — see the schema comment.
+        subcategory: subcategory ? String(subcategory).trim() : "",
         costPrice: parseFloat(costPrice),
       },
     });
@@ -799,7 +801,7 @@ export const updateProjectProduct = async (req, res) => {
       });
     }
 
-    const { productName, productGrade, costPrice, projectId, productId } = req.body;
+    const { productName, productGrade, costPrice, projectId, productId, subcategory } = req.body;
 
     logger.info(`Updating product: ${productId} for project: ${projectId}`);
 
@@ -839,6 +841,7 @@ export const updateProjectProduct = async (req, res) => {
       data: {
         ...(productName && { productName }),
         ...(productGrade && { productGrade }),
+        ...(subcategory !== undefined && { subcategory: String(subcategory).trim() }),
         ...(costPrice && { costPrice: parseFloat(costPrice) }),
       },
       include: {

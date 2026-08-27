@@ -318,8 +318,6 @@ export async function createSize(req, res) {
             data: {
                 name: name,
                 productId: parseInt(productId),
-                subcategory: req.body?.subcategory || ""
-
             }
         });
 
@@ -396,7 +394,6 @@ export async function updateSize(req, res) {
                 name,
                 productId: parseInt(productId),
                 isActive: isActive,
-                subcategory: req.body?.subcategory || existingSize.subcategory
             }
         });
         return res.status(200).json({ success: true, message: "Size updated successfully", data: updatedSize });

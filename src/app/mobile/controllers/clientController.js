@@ -147,13 +147,14 @@ export async function getProductGrades(req, res) {
         isActive: true,
         Product: { name: productName, isActive: true, isDeleted: false },
       },
-      select: { name: true, subcategory: true },
+      select: { name: true },
       orderBy: { name: 'asc' },
     });
 
-    const grades = sizes.map((s) =>
-      s.subcategory ? `${s.name} ${s.subcategory}`.trim() : s.name,
-    );
+    // Sub-category used to be appended to the grade name here. It now lives on
+    // the project product (chosen from the Subcategory master), so a grade is
+    // just its own name again.
+    const grades = sizes.map((s) => s.name);
 
     return res.status(200).json({ success: true, data: grades });
   } catch (error) {

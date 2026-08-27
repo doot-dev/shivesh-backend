@@ -47,16 +47,28 @@ model Product {
 }
 
 model Size {
-  id          Int      @id @default(autoincrement())
-  name        String
-  subcategory String   @default("")
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  productId   Int?
-  Product     Product? @relation(fields: [productId], references: [id])
+  id        Int      @id @default(autoincrement())
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  productId Int?
+  Product   Product? @relation(fields: [productId], references: [id])
 
   @@index([productId], map: "Size_productId_fkey")
+}
+
+/// Standalone master list of sub-categories (e.g. "Pure OPC", "Pure Mix").
+/// Deliberately NOT related to Size or ProjectProduct: consumers copy the
+/// `name` string onto their own row, so renaming a master entry here never
+/// rewrites history on existing project products.
+model Subcategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true)
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Vendor {
@@ -249,6 +261,9 @@ model ProjectProduct {
   projectId    String
   productName  String
   productGrade String
+  /// Copied by value from the Subcategory master at create/update time —
+  /// intentionally a plain string, NOT a foreign key.
+  subcategory  String                 @default("")
   costPrice    Float
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt

@@ -37,6 +37,7 @@ export const createProjectProductValidation = {
   projectId: "required|string",
   productName: "required|string",
   productGrade: "required|string",
+  subcategory: "string|sometimes",
   costPrice: "required|numeric|min:0",
 };
 
@@ -45,6 +46,7 @@ export const updateProjectProductValidation = {
   productId: "required|string",
   productName: "string",
   productGrade: "string",
+  subcategory: "string|sometimes",
   costPrice: "numeric|min:0",
 };
 
