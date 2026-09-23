@@ -67,6 +67,174 @@ function assignedOrder(orderId, userId) {
 
 const DEV_TECH_ID = 'dev-tech';
 
+// ─── Cross-order cube test feed ───────────────────────────────────────────────
+
+/**
+ * Shape one cube test row for the mobile "all cube tests" screens.
+ *
+ * Flattens the joined order/project/client down onto the row because the apps
+ * render a flat card list — nesting would force every client to walk
+ * `row.order.project.projectName` for a single label.
+ */
+function toFeedRow(ct) {
+  return {
+    id: ct.id,
+    castingDate: ct.castingDate,
+    quantity: ct.quantity,
+    period: ct.period,
+    fromDate: ct.fromDate,
+    toDate: ct.toDate,
+    fileUrl: ct.fileUrl,
+    createdAt: ct.createdAt,
+    orderId: ct.order?.orderId ?? null,
+    productName: ct.order?.productName ?? null,
+    productGrade: ct.order?.productGrade ?? null,
+    projectName: ct.order?.project?.projectName ?? null,
+    siteName: ct.order?.project?.siteName ?? null,
+    clientName: ct.order?.client?.companyName ?? null,
+  };
+}
+
+const FEED_INCLUDE = {
+  order: {
+    select: {
+      orderId: true,
+      productName: true,
+      productGrade: true,
+      project: { select: { projectName: true, siteName: true } },
+      client: { select: { companyName: true } },
+    },
+  },
+};
+
+/**
+ * Build the shared `where` for a cube test feed from the query string.
+ *
+ * `scope` is the caller's ownership filter (assigned-technician or own-client)
+ * and is merged in by the caller — this helper only handles the user-supplied
+ * filters, so it can never widen visibility on its own.
+ *
+ * Supported: `q` (order code / project / client / product, case-insensitive),
+ * `dateFrom`/`dateTo` on the CASTING date, and `status` of
+ * `due` (test date reached) or `upcoming` (still scheduled).
+ */
+function buildFeedFilters(query) {
+  const { q, dateFrom, dateTo, status } = query;
+  const where = { isDeleted: false };
+
+  const text = typeof q === 'string' ? q.trim() : '';
+  if (text) {
+    where.order = {
+      OR: [
+        { orderId: { contains: text } },
+        { productName: { contains: text } },
+        { productGrade: { contains: text } },
+        { project: { projectName: { contains: text } } },
+        { project: { siteName: { contains: text } } },
+        { client: { companyName: { contains: text } } },
+      ],
+    };
+  }
+
+  // Casting date range. An unparseable value is ignored rather than erroring,
+  // matching how the order list endpoints already treat bad date input.
+  const castingDate = {};
+  if (dateFrom) {
+    const from = new Date(dateFrom);
+    if (!Number.isNaN(from.getTime())) castingDate.gte = from;
+  }
+  if (dateTo) {
+    const to = new Date(dateTo);
+    if (!Number.isNaN(to.getTime())) {
+      // Inclusive of the whole end day — a bare yyyy-MM-dd parses to midnight,
+      // which would otherwise exclude everything cast later that same day.
+      to.setHours(23, 59, 59, 999);
+      castingDate.lte = to;
+    }
+  }
+  if (Object.keys(castingDate).length) where.castingDate = castingDate;
+
+  if (status === 'due') where.toDate = { lte: new Date() };
+  else if (status === 'upcoming') where.toDate = { gt: new Date() };
+
+  return where;
+}
+
+/**
+ * Every cube test on the orders this TECHNICIAN is assigned to, newest first.
+ *
+ * This is the cross-order feed behind the app's "Cube Tests" tab — the
+ * per-order list is `listCubeTests`. Ownership is enforced by the nested
+ * `technicians.some` filter, NOT by the client-supplied query.
+ */
+export async function listAllCubeTests(req, res) {
+  try {
+    const userId = req.user.data.id;
+
+    // DEV BYPASS — remove before production
+    if (userId === DEV_TECH_ID) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const where = buildFeedFilters(req.query);
+    where.order = {
+      ...(where.order ?? {}),
+      isDeleted: false,
+      technicians: { some: { userId, isDeleted: false } },
+    };
+
+    const cubeTests = await db.cubeTest.findMany({
+      where,
+      include: FEED_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: cubeTests.map(toFeedRow),
+    });
+  } catch (error) {
+    logger.error('tech listAllCubeTests error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/**
+ * Every cube test on this CLIENT's own orders, newest first.
+ *
+ * Read-only by design: clients see results, technicians and admins log them.
+ * Scoped by `order.clientId`, so the filters below can never reach another
+ * client's rows.
+ */
+export async function clientListAllCubeTests(req, res) {
+  try {
+    const clientDbId = req.user.data.id;
+
+    const where = buildFeedFilters(req.query);
+    where.order = {
+      ...(where.order ?? {}),
+      isDeleted: false,
+      clientId: clientDbId,
+    };
+
+    const cubeTests = await db.cubeTest.findMany({
+      where,
+      include: FEED_INCLUDE,
+      orderBy: { createdAt: 'desc' },
+      take: 300,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: cubeTests.map(toFeedRow),
+    });
+  } catch (error) {
+    logger.error('client listAllCubeTests error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
 // ─── List cube tests for an assigned order ────────────────────────────────────
 
 export async function listCubeTests(req, res) {

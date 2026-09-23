@@ -1,9 +1,23 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
 import { sendNotification } from '../../../helper/notificationHelper.js';
+import { getOrderChallanPublicUrl } from '../../../config/challanUploadConfig.js';
 
 // ─── Create TM detail ─────────────────────────────────────────────────────────
 
+/**
+ * Log a transit mixer against an assigned order.
+ *
+ * DELIBERATELY has no order-status gate: a TM can be added at any time,
+ * including after the order is DELIVERED or COMPLETED, because challans and
+ * paperwork routinely reach the technician late. `createdAt` records when the
+ * entry was really made, so a late addition is auditable rather than blocked.
+ *
+ * Accepts multipart/form-data so the challan photo rides along in the same
+ * request (field name `challan`, wired by uploadSingleOrderChallan). The file
+ * is optional — the numbers can be logged first and the photo attached later
+ * through updateTm.
+ */
 export async function createTm(req, res) {
   try {
     const { orderId } = req.params;
@@ -28,6 +42,11 @@ export async function createTm(req, res) {
     });
     const tmNumber = `TM ${String(existingCount + 1).padStart(2, '0')}`;
 
+    // An uploaded file always wins over a challanUrl sent in the body.
+    const uploadedChallanUrl = req.file
+      ? getOrderChallanPublicUrl(orderId, req.file.filename)
+      : null;
+
     const tm = await db.tmDetail.create({
       data: {
         orderId: order.id,
@@ -37,7 +56,7 @@ export async function createTm(req, res) {
         batchStartTime,
         batchEndTime,
         challanNo,
-        challanUrl: challanUrl || null,
+        challanUrl: uploadedChallanUrl || challanUrl || null,
         status: 'ASSIGNED',
       },
     });
@@ -62,6 +81,12 @@ export async function createTm(req, res) {
 
 // ─── Update TM detail ─────────────────────────────────────────────────────────
 
+/**
+ * Update a TM. Every field is optional — send only what changes.
+ *
+ * Like createTm this has no order-status gate: attaching a challan photo to an
+ * already-closed order is a normal, expected correction.
+ */
 export async function updateTm(req, res) {
   try {
     const { orderId, tmId } = req.params;
@@ -84,6 +109,10 @@ export async function updateTm(req, res) {
       return res.status(404).json({ success: false, message: 'TM detail not found' });
     }
 
+    const uploadedChallanUrl = req.file
+      ? getOrderChallanPublicUrl(orderId, req.file.filename)
+      : null;
+
     const updated = await db.tmDetail.update({
       where: { id: tmId },
       data: {
@@ -92,7 +121,9 @@ export async function updateTm(req, res) {
         ...(batchStartTime && { batchStartTime }),
         ...(batchEndTime && { batchEndTime }),
         ...(challanNo && { challanNo }),
-        ...(challanUrl !== undefined && { challanUrl }),
+        ...(uploadedChallanUrl
+          ? { challanUrl: uploadedChallanUrl }
+          : challanUrl !== undefined && { challanUrl }),
         ...(status && { status }),
       },
     });

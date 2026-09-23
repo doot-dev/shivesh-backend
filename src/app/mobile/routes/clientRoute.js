@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as clientController from '../controllers/clientController.js';
 import * as orderController from '../controllers/orderController.js';
+import * as cubeTestController from '../controllers/cubeTestController.js';
 import { verifyClientToken } from '../middleware/mobileAuth.js';
 
 const router = Router();
@@ -17,6 +18,11 @@ router.get('/projects/:projectId/orders', verifyClientToken, orderController.cli
 // Products
 router.get('/products', verifyClientToken, clientController.getProductNames);
 router.get('/products/:productName/grades', verifyClientToken, clientController.getProductGrades);
+
+// Cube testing reports across all of this client's orders.
+//
+// Read-only on purpose: clients view results, technicians and admins log them.
+router.get('/cube-tests', verifyClientToken, cubeTestController.clientListAllCubeTests);
 
 // Notifications
 router.get('/notifications', verifyClientToken, clientController.getNotifications);
