@@ -65,6 +65,23 @@ app.get('/health', async (req, res) => {
   });
 });
 
+// Route params (:orderId, :billNo, :clientId) are joined straight into upload
+// directories by the multer configs, and Express decodes them — so a segment
+// like "..%2F..%2Fsrc" would let multer write outside public/uploads. Reject
+// any segment that decodes to a separator or a parent reference, for all routes.
+app.use('/api', (req, res, next) => {
+  let segments;
+  try {
+    segments = req.path.split('/').map(decodeURIComponent);
+  } catch {
+    segments = null;
+  }
+  if (!segments || segments.some((s) => s === '..' || /[/\\]/.test(s))) {
+    return res.status(400).json({ success: false, message: 'Invalid path', data: null });
+  }
+  next();
+});
+
 // API Routes
 app.use('/api/v1/admin', adminApiRoutes);
 app.use('/api/v1/mobile', mobileApiRoutes);
