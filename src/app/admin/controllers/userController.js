@@ -3,6 +3,21 @@ import { resetPasswordValidation, userUpdateValidation, userValidation } from ".
 import db from "../../../config/database.js";
 import { decrypt, encrypt } from "../../../helper/security.js";
 import logger from "../../../helper/logger.js";
+import { ungrantableRole } from "../../../helper/accessControl.js";
+
+/** Role id from a request body: a positive integer, else null. Never 0 — `Number(null)` is 0 and breaks the FK. */
+function parseRoleId(roleId) {
+    const n = Number(roleId);
+    return roleId !== null && roleId !== "" && Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function cannotGrant(res, missing) {
+    return res.status(403).json({
+        success: false,
+        message: "You cannot assign permissions you do not hold yourself",
+        data: { missing },
+    });
+}
 
 /**
  * Creates a new user in the system.
@@ -23,7 +38,7 @@ export async function createUser(req, res) {
         if (!status) {
             return res.status(422).json({ success: false, message: "Validation Error", data: err });
         }
-        const { name, employeeId, userName, password, role, menuAccess } = req.body;
+        const { name, employeeId, userName, password, role, roleId, isSuperAdmin } = req.body;
         const existingUser = await db.user.findFirst({
             where: {
                 OR: [
@@ -42,6 +57,15 @@ export async function createUser(req, res) {
                 data: null
             });
         }
+        // Only an existing super admin may mint another one. Without this check
+        // anyone who can create a user could hand themselves unrestricted
+        // access by simply posting isSuperAdmin: true.
+        const grantSuper = Boolean(isSuperAdmin) && req.access?.isSuperAdmin === true;
+
+        const newRoleId = parseRoleId(roleId);
+        const missing = await ungrantableRole(req.access, newRoleId);
+        if (missing.length) return cannotGrant(res, missing);
+
         const hashedPassword = encrypt(password);
         const userData = await db.user.create({
             data: {
@@ -50,7 +74,8 @@ export async function createUser(req, res) {
                 userName: userName,
                 password: hashedPassword,
                 role: role,
-                menuAccess: menuAccess,
+                roleId: newRoleId,
+                isSuperAdmin: grantSuper,
                 status: true
             }
         });
@@ -82,7 +107,7 @@ export async function updateUser(req, res) {
             return res.status(422).json({ success: false, message: "Validation Error", data: err });
         }
 
-        const { id, name, employeeId, userName, role, menuAccess, status } = req.body;
+        const { id, name, employeeId, userName, role, roleId, isSuperAdmin, status } = req.body;
 
         const existingUser = await db.user.findUnique({
             where: { id: parseInt(id), isDeleted: false }
@@ -92,14 +117,37 @@ export async function updateUser(req, res) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
 
+        // Only a super admin may touch a super admin's account — otherwise
+        // users.update could disable or rename the people above you.
+        if (existingUser.isSuperAdmin && req.access?.isSuperAdmin !== true) {
+            return res.status(403).json({ success: false, message: "Only a super admin can edit a super admin", data: null });
+        }
+
         const updateData = {
             name,
             employeeId,
             userName,
             role,
-            menuAccess,
             status: status == "true" || status == true ? true : false
         };
+
+        if (roleId !== undefined) {
+            updateData.roleId = parseRoleId(roleId);
+            if (updateData.roleId !== existingUser.roleId) {
+                const missing = await ungrantableRole(req.access, updateData.roleId);
+                if (missing.length) return cannotGrant(res, missing);
+            }
+        }
+
+        // Same escalation guard as create, plus one extra rule: a super admin
+        // cannot remove their OWN flag. Doing so would strip the last person
+        // able to restore it, with no way back in from the panel.
+        if (isSuperAdmin !== undefined && req.access?.isSuperAdmin === true) {
+            const targetIsSelf = parseInt(id) === req.access.user.id;
+            if (!(targetIsSelf && !isSuperAdmin)) {
+                updateData.isSuperAdmin = Boolean(isSuperAdmin);
+            }
+        }
 
         // Check if userName or employeeId already exists for a different user
         const duplicateUser = await db.user.findFirst({
@@ -154,6 +202,10 @@ export async function getUser(req, res) {
 
         const user = await db.user.findUnique({
             where: { id: parseInt(id), isDeleted: false },
+            include: {
+                roleRef: { select: { id: true, name: true, isActive: true } },
+                permissionOverrides: { select: { permission: true, effect: true } },
+            },
         });
 
         if (!user) {
@@ -189,8 +241,10 @@ export async function getAllUsers(req, res) {
                 employeeId: true,
                 userName: true,
                 role: true,
-                menuAccess: true,
                 status: true,
+                roleId: true,
+                isSuperAdmin: true,
+                roleRef: { select: { id: true, name: true, isActive: true } },
                 createdAt: true,
                 updatedAt: true
             },

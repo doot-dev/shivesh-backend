@@ -12,6 +12,8 @@ import orderRoute from "./orderRoute.js"
 import billRoute from "./billRoute.js"
 import dashboardRoute from "./dashboardRoute.js"
 import notificationRoute from "./notificationRoute.js"
+import reportRoute from "./reportRoute.js"
+import roleRoute from "./roleRoute.js"
 
 
 const router = Router()
@@ -28,5 +30,7 @@ router.use('/orders', orderRoute)
 router.use('/bills', billRoute)
 router.use('/dashboard', dashboardRoute)
 router.use('/notifications', notificationRoute)
+router.use('/reports', reportRoute)
+router.use('/roles', roleRoute)
 
 export default router 

@@ -7,23 +7,82 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// An IAM identity for the web panel (and the technician app).
+///
+/// Two authorization inputs live here and they do DIFFERENT jobs:
+///   - `role` (UserRole enum) is the coarse job type. The mobile apps still key
+///     off `FIELD_TECHNICIAN`, so it must not be removed.
+///   - `roleId` -> Role is the permission-bearing role used by the panel.
+/// `isSuperAdmin` short-circuits every permission check — see resolveUserAccess.
+/// `menuAccess` is the LEGACY pre-IAM menu list; nothing reads it for access
+/// decisions any more, it is kept only so old rows still load.
 model User {
-  id             Int               @id @default(autoincrement())
-  name           String
-  employeeId     String
-  userName       String
-  password       String
-  role           UserRole
-  status         Boolean           @default(true)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  lastLoginAt    DateTime?
-  menuAccess     Json
-  isDeleted      Boolean           @default(false)
-  phone          String?
-  activities     Activity[]        @relation("UserActivities")
-  assignedLeads  Lead[]            @relation("LeadAssignedTo")
-  assignedOrders OrderTechnician[] @relation("OrderTechnicianUser")
+  id                  Int               @id @default(autoincrement())
+  name                String
+  employeeId          String
+  userName            String
+  password            String
+  role                UserRole
+  status              Boolean           @default(true)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  lastLoginAt         DateTime?
+  menuAccess          Json?
+  isDeleted           Boolean           @default(false)
+  phone               String?
+  roleId              Int?
+  isSuperAdmin        Boolean           @default(false)
+  activities          Activity[]        @relation("UserActivities")
+  assignedLeads       Lead[]            @relation("LeadAssignedTo")
+  assignedOrders      OrderTechnician[] @relation("OrderTechnicianUser")
+  roleRef             Role?             @relation("UserRoleRef", fields: [roleId], references: [id])
+  permissionOverrides UserPermission[]  @relation("UserPermissionOverrides")
+
+  @@index([roleId], map: "User_roleId_fkey")
+}
+
+/// A named, editable bundle of permissions assigned to panel users.
+/// `isSystem` marks the seeded Super Admin role: it cannot be deleted or have
+/// its permissions edited, so an admin can never lock everyone out of the panel.
+model Role {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique
+  description String?          @db.Text
+  isSystem    Boolean          @default(false)
+  isActive    Boolean          @default(true)
+  isDeleted   Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  permissions RolePermission[]
+  users       User[]           @relation("UserRoleRef")
+}
+
+/// One permission key ("orders.create") granted to a role.
+/// Stored as rows rather than a JSON blob so a role's grants can be queried,
+/// diffed and audited instead of being an opaque column.
+model RolePermission {
+  id         Int      @id @default(autoincrement())
+  roleId     Int
+  permission String
+  createdAt  DateTime @default(now())
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permission])
+  @@index([roleId])
+}
+
+/// A per-user exception layered on top of that user's role.
+/// DENY always beats ALLOW and beats the role grant — see resolveUserAccess.
+model UserPermission {
+  id         Int              @id @default(autoincrement())
+  userId     Int
+  permission String
+  effect     PermissionEffect @default(ALLOW)
+  createdAt  DateTime         @default(now())
+  user       User             @relation("UserPermissionOverrides", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@index([userId])
 }
 
 model OTP {
@@ -453,6 +512,11 @@ enum UserRole {
   PROJECT_MANAGER
   ACCOUNTANT
   FIELD_TECHNICIAN
+}
+
+enum PermissionEffect {
+  ALLOW
+  DENY
 }
 
 enum ProjectStatus {
