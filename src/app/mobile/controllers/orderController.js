@@ -1,6 +1,6 @@
 import db from '../../../config/database.js';
 import logger from '../../../helper/logger.js';
-import { sendNotification } from '../../../helper/notificationHelper.js';
+import { sendNotification, notifyAdmins } from '../../../helper/notificationHelper.js';
 import { emitOrderEvent } from '../../../realtime/socketServer.js';
 import { validateDeliveryDate } from '../../../helper/deliveryDateHelper.js';
 
@@ -273,10 +273,8 @@ export async function clientCreateOrder(req, res) {
       },
     });
 
-    // Notify admin (create notification for type ADMIN)
-    await sendNotification({
-      targetType: 'ADMIN',
-      targetId: 'admin',
+    // Notify the admin panel's bell (live over the WebSocket).
+    await notifyAdmins({
       title: 'New Order Created',
       message: `Client placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
       type: 'ORDER_CREATED',
@@ -416,12 +414,24 @@ export async function techUpdateStatus(req, res) {
       },
     });
 
+    const statusLabel = deliveryStatus.replace('_', ' ');
+
     // Notify the client
     await sendNotification({
       targetType: 'CLIENT',
       targetId: order.clientId,
       title: 'Order Status Updated',
-      message: `Your order ${orderId} status has been updated to ${deliveryStatus.replace('_', ' ')}`,
+      message: `Your order ${orderId} status has been updated to ${statusLabel}`,
+      type: 'STATUS_UPDATED',
+      relatedId: order.id,
+      orderId: order.id,
+    });
+
+    // Admins watch every order, so a technician moving an order forward is
+    // exactly the kind of thing the back office needs to see without asking.
+    await notifyAdmins({
+      title: 'Order Status Updated',
+      message: `${req.user.data.name || 'A technician'} moved order ${orderId} to ${statusLabel}`,
       type: 'STATUS_UPDATED',
       relatedId: order.id,
       orderId: order.id,
@@ -523,6 +533,16 @@ export async function addComment(req, res) {
         })
       )
     );
+
+    // The admin panel sees BOTH sides of the conversation — a client message
+    // and a technician message both land in the bell, labelled with who sent it.
+    await notifyAdmins({
+      title: authorType === 'CLIENT' ? 'New Client Message' : 'New Technician Message',
+      message: `${authorName} commented on order ${orderId}: ${message.trim().slice(0, 120)}`,
+      type: 'COMMENT_ADDED',
+      relatedId: order.id,
+      orderId: order.id,
+    });
 
     // Real-time fan-out: the comment appears on every open device immediately.
     emitOrderEvent(orderId, 'comment:new', comment, {

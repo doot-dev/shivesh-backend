@@ -15,7 +15,10 @@ import { createActivityLog } from "../../../helper/activityLogger.js";
 import { generateBillForOrder } from "./billController.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
-import { sendNotification } from "../../../helper/notificationHelper.js";
+import {
+  sendNotification,
+  notifyAdmins,
+} from "../../../helper/notificationHelper.js";
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
 async function assignedTechUserIds(orderDbId) {
@@ -461,6 +464,16 @@ export async function createOrder(req, res) {
       type: "ORDER_CREATED",
     });
 
+    // The panel's bell is a shared back-office feed, so an order booked by one
+    // admin still needs to surface for the rest of the team.
+    await notifyAdmins({
+      title: "New Order Created",
+      message: `${req.user?.data?.userName || "An admin"} created order ${orderId} for ${client.companyName || "a client"} — ${productName} ${productGrade} (${quantity})`,
+      type: "ORDER_CREATED",
+      relatedId: order.id,
+      orderId: order.id,
+    });
+
     await createActivityLog({
       title: "Order created",
       description: `Order ${orderId} created for project ${projectId}`,
@@ -616,6 +629,14 @@ export async function updateOrderStatus(req, res) {
       title: "Order Status Updated",
       message: `Order ${orderId} is now ${status || deliveryStatus}`,
       type: "STATUS_UPDATED",
+    });
+
+    await notifyAdmins({
+      title: "Order Status Updated",
+      message: `Order ${orderId} is now ${status || deliveryStatus}`,
+      type: "STATUS_UPDATED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     // Live push to the client's app and any open order screen.

@@ -260,6 +260,23 @@ export function emitOrderEvent(orderId, type, data, targets = {}) {
   }
 }
 
+/**
+ * Push a payload to every admin currently signed in to the web panel.
+ *
+ * Admins have no mobile app and therefore no FCM device token, so this socket
+ * fan-out is the ONLY live channel they have — without it the notification bell
+ * would only ever update on a page refresh. Used by sendNotification() whenever
+ * an ADMIN notification is created.
+ */
+export function emitToAdmins(type, data) {
+  if (!wss) return;
+  const payload = { type, data, at: new Date().toISOString() };
+
+  for (const ws of sockets) {
+    if (ws.user?.type === 'ADMIN') send(ws, payload);
+  }
+}
+
 /** Push a payload to every live socket belonging to one client. */
 export function emitToClient(clientDbId, type, data) {
   if (!wss || !clientDbId) return;
