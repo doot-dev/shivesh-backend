@@ -10,6 +10,7 @@ import {
   uploadBillDocument,
   uploadTmChallan,
   updateTmApproval,
+  downloadInvoice,
 } from "../controllers/billController.js";
 import { verifyToken } from "../../../config/jwtConfig.js";
 import { uploadSingleBillDoc } from "../../../config/billUploadConfig.js";
@@ -32,6 +33,7 @@ router.get("/order/:orderId", verifyToken, requirePermission(can('billing', 'vie
 router.put("/status", verifyToken, requirePermission(can('billing', 'update')), updateBillStatus);
 router.put("/", verifyToken, requirePermission(can('billing', 'update')), updateBill);
 router.post("/:billNo/document", verifyToken, requirePermission(can('billing', 'update')), uploadSingleBillDoc, uploadBillDocument);
+router.get("/:billNo/invoice", verifyToken, requirePermission(can('billing', 'view')), downloadInvoice);
 router.get("/:billNo", verifyToken, requirePermission(can('billing', 'view')), getBillDetails);
 router.delete("/:billNo", verifyToken, requirePermission(can('billing', 'delete')), deleteBill);
 

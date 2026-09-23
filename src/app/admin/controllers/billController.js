@@ -11,6 +11,7 @@ import { createActivityLog } from "../../../helper/activityLogger.js";
 import { sendNotification } from "../../../helper/notificationHelper.js";
 import { getBillDocPublicUrl } from "../../../config/billUploadConfig.js";
 import { getChallanPublicUrl } from "../../../config/challanUploadConfig.js";
+import { buildInvoicePdf } from "../../../helper/invoicePdf.js";
 
 /**
  * Resolve a bill and one of its order's TMs together.
@@ -414,6 +415,39 @@ export const getBillDetails = async (req, res) => {
       message: "Failed to fetch bill details",
       error: error.message,
     });
+  }
+};
+
+/**
+ * Stream the invoice PDF for a bill: invoice page + the attached bill document
+ * and every non-rejected TM challan appended as pages. Built fresh each time so
+ * it always reflects the latest approvals and uploads.
+ */
+export const downloadInvoice = async (req, res) => {
+  try {
+    const { billNo } = req.params;
+
+    const bill = await db.bill.findFirst({ where: { billNo, isDeleted: false } });
+    if (!bill) {
+      return res.status(404).json({ success: false, message: "Bill not found" });
+    }
+
+    const order = await db.order.findFirst({
+      where: { id: bill.orderId },
+      include: buildBillOrderInclude(),
+    });
+    if (!order) {
+      return res.status(404).json({ success: false, message: "Order not found" });
+    }
+
+    const pdf = await buildInvoicePdf(bill, order);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="Invoice-${bill.billNo}.pdf"`);
+    return res.status(200).send(Buffer.from(pdf));
+  } catch (error) {
+    logger.error("Error generating invoice:", error);
+    return res.status(500).json({ success: false, message: "Failed to generate invoice", error: error.message });
   }
 };
 
