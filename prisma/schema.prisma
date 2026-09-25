@@ -561,20 +561,43 @@ model Order {
 }
 
 model CubeTest {
-  id          String         @id @default(cuid())
+  id          String               @id @default(cuid())
   orderId     String
   castingDate DateTime
   quantity    String
   period      CubeTestPeriod
   fromDate    DateTime
   toDate      DateTime
+  /// Newest live attachment, mirrored so old app builds and the status keep working.
   fileUrl     String?
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  isDeleted   Boolean        @default(false)
-  order       Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  /// USER | FIELD_TECH | CLIENT_CONTACT — who logged the test.
+  addedByType String?
+  addedByName String?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  isDeleted   Boolean              @default(false)
+  order       Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attachments CubeTestAttachment[]
 
   @@index([orderId])
+}
+
+/// A result sheet or photo on a cube test. Many per test, added at any time.
+model CubeTestAttachment {
+  id          String   @id @default(cuid())
+  cubeTestId  String
+  fileUrl     String   @db.VarChar(512)
+  fileName    String?
+  mimeType    String?
+  /// USER | FIELD_TECH | CLIENT_CONTACT | SYSTEM (moved from CubeTest.fileUrl)
+  addedByType String
+  addedById   String?
+  addedByName String?
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  cubeTest    CubeTest @relation(fields: [cubeTestId], references: [id], onDelete: Cascade)
+
+  @@index([cubeTestId])
 }
 
 model Bill {

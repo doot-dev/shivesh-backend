@@ -2,12 +2,8 @@ import db from '../../../config/database.js';
 import { orderProjectScope } from '../../../helper/clientAccess.js';
 import logger from '../../../helper/logger.js';
 import { sendNotification } from '../../../helper/notificationHelper.js';
-import {
-  getCubeTestPublicUrl,
-  deleteCubeTestFile,
-} from '../../../config/cubeTestUploadConfig.js';
-import { resolveToDate, SELECTABLE_PERIODS, cubeTestStatus, withStatus } from '../../../helper/cubeTest.js';
-import { productByName } from '../../../helper/productUnits.js';
+import { cubeTestStatus, withStatus } from '../../../helper/cubeTest.js';
+import { saveCubeTest, removeAttachment, uploadedFiles, WITH_ATTACHMENTS } from '../../../helper/cubeTestStore.js';
 import { createActivityLog } from '../../../helper/activityLogger.js';
 
 /**
@@ -56,6 +52,9 @@ function toFeedRow(ct) {
     fromDate: ct.fromDate,
     toDate: ct.toDate,
     fileUrl: ct.fileUrl,
+    attachments: ct.attachments ?? [],
+    addedByType: ct.addedByType,
+    addedByName: ct.addedByName,
     status: cubeTestStatus(ct),
     createdAt: ct.createdAt,
     orderId: ct.order?.orderId ?? null,
@@ -68,6 +67,7 @@ function toFeedRow(ct) {
 }
 
 const FEED_INCLUDE = {
+  ...WITH_ATTACHMENTS,
   order: {
     select: {
       orderId: true,
@@ -229,6 +229,7 @@ export async function listCubeTests(req, res) {
 
     const cubeTests = await db.cubeTest.findMany({
       where: { orderId: order.id, isDeleted: false },
+      include: WITH_ATTACHMENTS,
       orderBy: { createdAt: 'desc' },
     });
 
@@ -239,76 +240,36 @@ export async function listCubeTests(req, res) {
   }
 }
 
-// ─── Create a cube test ───────────────────────────────────────────────────────
+// ─── Create / update a cube test ──────────────────────────────────────────────
+
+const techActor = (req) => ({ type: 'FIELD_TECH', id: req.user.data.id, name: req.user.data.name ?? null });
 
 /**
- * Log a cube test against an assigned order.
- *
- * Accepts multipart/form-data so the result image/PDF rides along in the same
- * request (field name `file`, wired by uploadSingleCubeTestFile). The file is
- * optional — a technician commonly records the casting first and attaches the
- * result sheet days later via update.
+ * Log a cube test against an assigned order. multipart/form-data: result
+ * sheets/photos ride along as `files` (many) or the old single `file`, and are
+ * optional — the casting is usually logged first, results added later.
  */
 export async function createCubeTest(req, res) {
   try {
     const { orderId } = req.params;
     const userId = req.user.data.id;
-    const { castingDate, quantity, period, customDate } = req.body;
-
-    if (!castingDate || !quantity || !period) {
-      return res.status(400).json({
-        success: false,
-        message: 'castingDate, quantity and period are required',
-      });
-    }
-
-    if (!SELECTABLE_PERIODS.includes(period)) {
-      return res.status(422).json({
-        success: false,
-        message: `period must be one of ${SELECTABLE_PERIODS.join(', ')}`,
-      });
-    }
-
-    const casting = new Date(castingDate);
-    if (Number.isNaN(casting.getTime())) {
-      return res.status(422).json({ success: false, message: 'castingDate is not a valid date' });
-    }
 
     const order = await assignedOrder(orderId, userId);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // W38: cube tests only make sense for concrete.
-    if ((await productByName(order.productName))?.isConcrete === false) {
-      return res.status(400).json({ success: false, message: 'Cube tests apply only to concrete products' });
-    }
-
-    const { error, toDate } = resolveToDate(period, casting, customDate, order);
-    if (error) {
-      return res.status(400).json({ success: false, message: error });
-    }
-
-    const fileUrl = req.file ? getCubeTestPublicUrl(orderId, req.file.filename) : null;
-
-    const cubeTest = await db.cubeTest.create({
-      data: {
-        orderId: order.id,
-        castingDate: casting,
-        quantity: String(quantity),
-        period,
-        fromDate: casting,
-        toDate,
-        fileUrl,
-      },
-    });
+    const files = uploadedFiles(req);
+    const r = await saveCubeTest({ order, body: req.body, files, actor: techActor(req) });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+    const { cubeTest } = r;
 
     // The client is the party waiting on cube results, so tell them a test was logged.
     await sendNotification({
       targetType: 'CLIENT',
       targetId: order.clientId,
-      title: 'Cube Test Added',
-      message: `A cube test was logged for order ${orderId}, testing on ${toDate.toDateString()}`,
+      title: files.length ? 'Cube test result added' : 'Cube Test Added',
+      message: `A cube test was logged for order ${orderId}, testing on ${cubeTest.toDate.toDateString()}`,
       type: 'STATUS_UPDATED',
       relatedId: order.id,
       orderId: order.id,
@@ -316,7 +277,7 @@ export async function createCubeTest(req, res) {
 
     await createActivityLog({
       title: 'Cube test added (field app)',
-      description: `Cube test on ${orderId}: cast ${casting.toDateString()}, ${period}, testing ${toDate.toDateString()}${fileUrl ? ', result attached' : ''}`,
+      description: `Cube test on ${orderId}: cast ${cubeTest.castingDate.toDateString()}, ${cubeTest.period}, testing ${cubeTest.toDate.toDateString()}${files.length ? `, ${files.length} file(s) attached` : ''}`,
       entityType: 'ORDER',
       entityId: order.id,
       action: 'CREATED',
@@ -324,35 +285,21 @@ export async function createCubeTest(req, res) {
     });
     logger.info(`Cube test ${cubeTest.id} created on ${orderId} by tech ${userId}`);
 
-    return res.status(201).json({
-      success: true,
-      message: 'Cube test created successfully',
-      data: withStatus(cubeTest),
-    });
+    return res.status(201).json({ success: true, message: 'Cube test created successfully', data: cubeTest });
   } catch (error) {
     logger.error('tech createCubeTest error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }
 
-// ─── Update a cube test ───────────────────────────────────────────────────────
-
 /**
- * Update a cube test. Every field is optional — send only what changes.
- * A new file replaces the old one on disk so uploads cannot accumulate.
+ * Update a cube test. Every field is optional — send only what changes. Files
+ * sent are ADDED as attachments; remove one with DELETE .../attachments/:id.
  */
 export async function updateCubeTest(req, res) {
   try {
     const { orderId, cubeTestId } = req.params;
     const userId = req.user.data.id;
-    const { castingDate, quantity, period, customDate } = req.body;
-
-    if (period && !SELECTABLE_PERIODS.includes(period)) {
-      return res.status(422).json({
-        success: false,
-        message: `period must be one of ${SELECTABLE_PERIODS.join(', ')}`,
-      });
-    }
 
     const order = await assignedOrder(orderId, userId);
     if (!order) {
@@ -366,56 +313,13 @@ export async function updateCubeTest(req, res) {
       return res.status(404).json({ success: false, message: 'Cube test not found' });
     }
 
-    const nextPeriod = period || existing.period;
-    const nextCastingDate = castingDate ? new Date(castingDate) : existing.castingDate;
-
-    if (Number.isNaN(new Date(nextCastingDate).getTime())) {
-      return res.status(422).json({ success: false, message: 'castingDate is not a valid date' });
-    }
-
-    let nextToDate = existing.toDate;
-    if (nextPeriod === 'CUSTOM') {
-      if (customDate) {
-        const { error, toDate } = resolveToDate('CUSTOM', nextCastingDate, customDate, order);
-        if (error) return res.status(400).json({ success: false, message: error });
-        nextToDate = toDate;
-      } else if (existing.period !== 'CUSTOM') {
-        return res.status(422).json({
-          success: false,
-          message: 'customDate is required when period is CUSTOM',
-        });
-      }
-    } else if (period || castingDate) {
-      const { error, toDate } = resolveToDate(nextPeriod, nextCastingDate, customDate, order);
-      if (error) return res.status(400).json({ success: false, message: error });
-      nextToDate = toDate;
-    }
-
-    let fileUrl = existing.fileUrl;
-    if (req.file) {
-      if (existing.fileUrl) {
-        deleteCubeTestFile(orderId, existing.fileUrl.split('/').pop());
-      }
-      fileUrl = getCubeTestPublicUrl(orderId, req.file.filename);
-    }
-
-    const resultAdded = Boolean(req.file) && !existing.fileUrl;
-
-    const updated = await db.cubeTest.update({
-      where: { id: cubeTestId },
-      data: {
-        ...(castingDate && { castingDate: nextCastingDate }),
-        ...(quantity && { quantity: String(quantity) }),
-        ...(period && { period }),
-        fromDate: nextCastingDate,
-        toDate: nextToDate,
-        fileUrl,
-      },
-    });
+    const r = await saveCubeTest({ order, existing, body: req.body, files: uploadedFiles(req), actor: techActor(req) });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+    const { cubeTest, added, resultAdded } = r;
 
     await createActivityLog({
       title: 'Cube test updated (field app)',
-      description: `Cube test on ${orderId}: test date ${new Date(existing.toDate).toDateString()} → ${new Date(updated.toDate).toDateString()}${resultAdded ? ', result attached' : ''}`,
+      description: `Cube test on ${orderId}: test date ${new Date(existing.toDate).toDateString()} → ${cubeTest.toDate.toDateString()}${added ? `, ${added} file(s) attached` : ''}`,
       entityType: 'ORDER',
       entityId: order.id,
       action: 'UPDATED',
@@ -433,13 +337,37 @@ export async function updateCubeTest(req, res) {
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      message: 'Cube test updated successfully',
-      data: withStatus(updated),
-    });
+    return res.status(200).json({ success: true, message: 'Cube test updated successfully', data: cubeTest });
   } catch (error) {
     logger.error('tech updateCubeTest error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** DELETE .../cube-test/:cubeTestId/attachments/:attachmentId — any file on an assigned order. */
+export async function deleteAttachment(req, res) {
+  try {
+    const { orderId, cubeTestId, attachmentId } = req.params;
+    const userId = req.user.data.id;
+
+    const order = await assignedOrder(orderId, userId);
+    const existing = order && await db.cubeTest.findFirst({ where: { id: cubeTestId, orderId: order.id, isDeleted: false } });
+    if (!existing) return res.status(404).json({ success: false, message: 'Cube test not found' });
+
+    const r = await removeAttachment({ cubeTestId, attachmentId });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message, code: r.code });
+
+    await createActivityLog({
+      title: 'Cube test file removed (field app)',
+      description: `Removed ${r.removed.fileName || 'a file'} from a cube test on ${orderId}`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      action: 'UPDATED',
+      createdById: Number(userId),
+    });
+    return res.status(200).json({ success: true, message: 'Attachment removed', data: r.cubeTest });
+  } catch (error) {
+    logger.error('tech deleteAttachment error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }
@@ -479,6 +407,112 @@ export async function deleteCubeTest(req, res) {
     return res.status(200).json({ success: true, message: 'Cube test deleted successfully' });
   } catch (error) {
     logger.error('tech deleteCubeTest error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+// ─── Client app: log and edit cube tests (cubeTests.manage) ──────────────────
+
+/** The client's own order, inside the contact's project scope, else null (404 — same as missing). */
+function clientOrder(req, orderId) {
+  return db.order.findFirst({
+    where: { orderId, isDeleted: false, clientId: req.user.data.id, ...orderProjectScope(req.clientAccess) },
+  });
+}
+
+const clientActor = (req) => {
+  const c = req.clientAccess?.contact;
+  return { type: 'CLIENT_CONTACT', id: c?.id ?? null, name: c?.name ?? 'Client' };
+};
+
+/** Audit row for a client-side cube test change (W33). */
+const clientLog = (req, order, title, description, action = 'UPDATED') => createActivityLog({
+  title,
+  description,
+  entityType: 'ORDER',
+  entityId: order.id,
+  action,
+  actorType: 'CLIENT_CONTACT',
+  actorId: req.clientAccess?.contact?.id ?? String(req.user.data.id),
+  source: 'CLIENT_APP',
+});
+
+/** GET /client/orders/:orderId/cube-test — one order's cube tests with their attachments. */
+export async function clientListCubeTests(req, res) {
+  try {
+    const order = await clientOrder(req, req.params.orderId);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+    const cubeTests = await db.cubeTest.findMany({
+      where: { orderId: order.id, isDeleted: false },
+      include: WITH_ATTACHMENTS,
+      orderBy: { createdAt: 'desc' },
+    });
+    return res.status(200).json({ success: true, data: cubeTests.map(withStatus) });
+  } catch (error) {
+    logger.error('client listCubeTests error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** POST /client/orders/:orderId/cube-test — same body and rules as the field app. */
+export async function clientCreateCubeTest(req, res) {
+  try {
+    const { orderId } = req.params;
+    const order = await clientOrder(req, orderId);
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    const files = uploadedFiles(req);
+    const actor = clientActor(req);
+    const r = await saveCubeTest({ order, body: req.body, files, actor });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+
+    await clientLog(req, order, 'Cube test added (client app)',
+      `${actor.name} logged a cube test on ${orderId}: cast ${r.cubeTest.castingDate.toDateString()}, testing ${r.cubeTest.toDate.toDateString()}${files.length ? `, ${files.length} file(s) attached` : ''}`,
+      'CREATED');
+    return res.status(201).json({ success: true, message: 'Cube test created successfully', data: r.cubeTest });
+  } catch (error) {
+    logger.error('client createCubeTest error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** PUT /client/orders/:orderId/cube-test/:cubeTestId — edit fields and/or add files, at any time. */
+export async function clientUpdateCubeTest(req, res) {
+  try {
+    const { orderId, cubeTestId } = req.params;
+    const order = await clientOrder(req, orderId);
+    const existing = order && await db.cubeTest.findFirst({ where: { id: cubeTestId, orderId: order.id, isDeleted: false } });
+    if (!existing) return res.status(404).json({ success: false, message: 'Cube test not found' });
+
+    const actor = clientActor(req);
+    const r = await saveCubeTest({ order, existing, body: req.body, files: uploadedFiles(req), actor });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+
+    await clientLog(req, order, 'Cube test updated (client app)',
+      `${actor.name} updated a cube test on ${orderId}${r.added ? `, ${r.added} file(s) attached` : ''}`);
+    return res.status(200).json({ success: true, message: 'Cube test updated successfully', data: r.cubeTest });
+  } catch (error) {
+    logger.error('client updateCubeTest error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** DELETE /client/orders/:orderId/cube-test/:cubeTestId/attachments/:attachmentId — only files a client contact added. */
+export async function clientDeleteAttachment(req, res) {
+  try {
+    const { orderId, cubeTestId, attachmentId } = req.params;
+    const order = await clientOrder(req, orderId);
+    const existing = order && await db.cubeTest.findFirst({ where: { id: cubeTestId, orderId: order.id, isDeleted: false } });
+    if (!existing) return res.status(404).json({ success: false, message: 'Cube test not found' });
+
+    const r = await removeAttachment({ cubeTestId, attachmentId, onlyAddedBy: 'CLIENT_CONTACT' });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message, code: r.code });
+
+    await clientLog(req, order, 'Cube test file removed (client app)',
+      `${clientActor(req).name} removed ${r.removed.fileName || 'a file'} from a cube test on ${orderId}`);
+    return res.status(200).json({ success: true, message: 'Attachment removed', data: r.cubeTest });
+  } catch (error) {
+    logger.error('client deleteAttachment error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }

@@ -6,6 +6,7 @@ import * as tmController from '../controllers/tmController.js';
 import * as teamController from '../controllers/clientTeamController.js';
 import { verifyClientToken } from '../middleware/mobileAuth.js';
 import { requireClientPermission as allow } from '../../../helper/clientAccess.js';
+import { uploadCubeTestFiles } from '../../../config/cubeTestUploadConfig.js';
 
 const router = Router();
 
@@ -24,10 +25,15 @@ router.get('/projects/:projectId/orders', verifyClientToken, allow('orders.view'
 router.get('/products', verifyClientToken, clientController.getProductNames);
 router.get('/products/:productName/grades', verifyClientToken, clientController.getProductGrades);
 
-// Cube testing reports across all of this client's orders.
-//
-// Read-only on purpose: clients view results, technicians and admins log them.
+// Cube testing across all of this client's orders. With cubeTests.manage
+// (Owner, Site Engineer) a contact also logs and edits tests and adds result
+// files at any time; they may remove only files their own team added.
+// The upload runs AFTER the token and permission checks, like the tech routes.
 router.get('/cube-tests', verifyClientToken, allow('cubeTests.view'), cubeTestController.clientListAllCubeTests);
+router.get('/orders/:orderId/cube-test', verifyClientToken, allow('cubeTests.view'), cubeTestController.clientListCubeTests);
+router.post('/orders/:orderId/cube-test', verifyClientToken, allow('cubeTests.manage'), uploadCubeTestFiles, cubeTestController.clientCreateCubeTest);
+router.put('/orders/:orderId/cube-test/:cubeTestId', verifyClientToken, allow('cubeTests.manage'), uploadCubeTestFiles, cubeTestController.clientUpdateCubeTest);
+router.delete('/orders/:orderId/cube-test/:cubeTestId/attachments/:attachmentId', verifyClientToken, allow('cubeTests.manage'), cubeTestController.clientDeleteAttachment);
 
 // Money (P1.14, P1.16)
 router.get('/credit', verifyClientToken, allow('account.view'), clientController.getCredit);

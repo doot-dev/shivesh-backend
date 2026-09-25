@@ -2,7 +2,7 @@ import { Router } from 'express';
 import * as orderController from '../controllers/orderController.js';
 import * as cubeTestController from '../controllers/cubeTestController.js';
 import { verifyToken } from '../../../config/jwtConfig.js';
-import { uploadSingleCubeTestFile } from '../../../config/cubeTestUploadConfig.js';
+import { uploadCubeTestFiles } from '../../../config/cubeTestUploadConfig.js';
 import { requirePermission, can } from '../../../helper/accessControl.js';
 import * as billController from '../controllers/billController.js';
 import { uploadSingleOrderChallan } from '../../../config/challanUploadConfig.js';
@@ -34,11 +34,12 @@ router.delete('/:orderId/tm/:tmId', verifyToken, requirePermission(can('orders',
 
 // Order Cube Test routes — these live under an order URL but belong to the
 // Cube Testing module, so they are gated on cubeTests, not orders.
-router.post('/:orderId/cube-test', verifyToken, requirePermission(can('cubeTests', 'create')), uploadSingleCubeTestFile, cubeTestController.createCubeTest);
+router.post('/:orderId/cube-test', verifyToken, requirePermission(can('cubeTests', 'create')), uploadCubeTestFiles, cubeTestController.createCubeTest);
 router.get('/:orderId/cube-test', verifyToken, requirePermission(can('cubeTests', 'view')), cubeTestController.getCubeTests);
 router.get('/:orderId/cube-test/:cubeTestId', verifyToken, requirePermission(can('cubeTests', 'view')), cubeTestController.getCubeTest);
-router.put('/:orderId/cube-test/:cubeTestId', verifyToken, requirePermission(can('cubeTests', 'update')), uploadSingleCubeTestFile, cubeTestController.updateCubeTest);
+router.put('/:orderId/cube-test/:cubeTestId', verifyToken, requirePermission(can('cubeTests', 'update')), uploadCubeTestFiles, cubeTestController.updateCubeTest);
 router.delete('/:orderId/cube-test/:cubeTestId', verifyToken, requirePermission(can('cubeTests', 'delete')), cubeTestController.deleteCubeTest);
+router.delete('/:orderId/cube-test/:cubeTestId/attachments/:attachmentId', verifyToken, requirePermission(can('cubeTests', 'update')), cubeTestController.deleteAttachment);
 
 // W23: credit hold release — only for approvers (Super Admin, or a Project Manager granted orders.approve).
 router.post('/:orderId/credit-release', verifyToken, requirePermission(can('orders', 'approve')), orderController.releaseCreditHold);

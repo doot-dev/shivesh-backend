@@ -35,7 +35,8 @@ const storage = multer.diskStorage({
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     const nameWithoutExt = path.basename(file.originalname, ext);
-    const sanitizedName = nameWithoutExt.replace(/[^a-zA-Z0-9]/g, '_');
+    // Capped so the stored URL fits CubeTest.fileUrl (191 chars).
+    const sanitizedName = nameWithoutExt.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 60);
     cb(null, `${sanitizedName}-${uniqueSuffix}${ext}`);
   }
 });
@@ -64,6 +65,13 @@ export const uploadCubeTestFile = multer({
 
 // Middleware for single file upload
 export const uploadSingleCubeTestFile = [uploadCubeTestFile.single('file'), pushUploads];
+
+// Many attachments per cube test: `files` (up to 10 per request), plus the
+// single `file` that older app builds still send.
+export const uploadCubeTestFiles = [
+  uploadCubeTestFile.fields([{ name: 'files', maxCount: 10 }, { name: 'file', maxCount: 1 }]),
+  pushUploads,
+];
 
 // Helper function to get public URL for uploaded file
 export function getCubeTestPublicUrl(orderId, filename) {

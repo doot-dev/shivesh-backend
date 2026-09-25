@@ -7,16 +7,19 @@ import {
 } from "../validations/cubeTestValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { sendNotification } from "../../../helper/notificationHelper.js";
-import { resolveToDate, withStatus } from "../../../helper/cubeTest.js";
+import { withStatus } from "../../../helper/cubeTest.js";
 import { dateTimeDayRange } from "../../../helper/dateRange.js";
-import { productByName } from "../../../helper/productUnits.js";
-import {
-  getCubeTestPublicUrl,
-  deleteCubeTestFile,
-} from "../../../config/cubeTestUploadConfig.js";
+import { saveCubeTest, removeAttachment, uploadedFiles, WITH_ATTACHMENTS } from "../../../helper/cubeTestStore.js";
 
 async function resolveOrder(orderId) {
   return db.order.findFirst({ where: { orderId, isDeleted: false } });
+}
+
+/** The panel user behind the request, for "added by" on tests and files. */
+async function panelActor(req) {
+  const id = Number(req.user?.data?.id) || null;
+  const user = id ? await db.user.findUnique({ where: { id }, select: { name: true } }) : null;
+  return { type: "USER", id, name: user?.name ?? req.user?.data?.userName ?? null };
 }
 
 /**
@@ -40,41 +43,21 @@ export const createCubeTest = async (req, res) => {
       });
     }
 
-    const { castingDate, quantity, period, customDate } = req.body;
-
     const order = await resolveOrder(orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    // W38: cube tests only make sense for concrete.
-    if ((await productByName(order.productName))?.isConcrete === false) {
-      return res.status(400).json({ success: false, message: "Cube tests apply only to concrete products" });
-    }
-
-    const { error, toDate } = resolveToDate(period, castingDate, customDate, order);
-    if (error) {
-      return res.status(400).json({ success: false, message: error });
-    }
-
-    const fromDate = new Date(castingDate);
-    const fileUrl = req.file ? getCubeTestPublicUrl(orderId, req.file.filename) : null;
-
-    const cubeTest = await db.cubeTest.create({
-      data: {
-        orderId: order.id,
-        castingDate: fromDate,
-        quantity,
-        period,
-        fromDate,
-        toDate,
-        fileUrl,
-      },
-    });
+    const files = uploadedFiles(req);
+    const r = await saveCubeTest({ order, body: req.body, files, actor: await panelActor(req) });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+    const { cubeTest } = r;
+    const { toDate } = cubeTest;
+    const quantity = cubeTest.quantity;
 
     await createActivityLog({
       title: "Cube test added",
-      description: `Cube test added for order ${orderId} — ${quantity}, testing on ${toDate.toDateString()}`,
+      description: `Cube test added for order ${orderId} — ${quantity}, testing on ${toDate.toDateString()}${files.length ? `, ${files.length} file(s) attached` : ""}`,
       entityType: "ORDER",
       entityId: order.id,
       action: "CREATED",
@@ -84,7 +67,7 @@ export const createCubeTest = async (req, res) => {
     await sendNotification({
       targetType: "CLIENT",
       targetId: order.clientId,
-      title: cubeTest.fileUrl ? "Cube test result added" : "Cube Test Added",
+      title: files.length ? "Cube test result added" : "Cube Test Added",
       message: `A cube test was logged for order ${orderId}, testing on ${toDate.toDateString()}`,
       type: "STATUS_UPDATED",
       relatedId: order.id,
@@ -94,7 +77,7 @@ export const createCubeTest = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Cube test created successfully",
-      data: withStatus(cubeTest),
+      data: cubeTest,
     });
   } catch (error) {
     logger.error("Error creating cube test:", error);
@@ -118,6 +101,7 @@ export const getCubeTests = async (req, res) => {
 
     const cubeTests = await db.cubeTest.findMany({
       where: { orderId: order.id, isDeleted: false },
+      include: WITH_ATTACHMENTS,
       orderBy: { createdAt: "desc" },
     });
 
@@ -144,6 +128,7 @@ export const getCubeTest = async (req, res) => {
 
     const cubeTest = await db.cubeTest.findFirst({
       where: { id: cubeTestId, orderId: order.id, isDeleted: false },
+      include: WITH_ATTACHMENTS,
     });
 
     if (!cubeTest) {
@@ -183,8 +168,6 @@ export const updateCubeTest = async (req, res) => {
       });
     }
 
-    const { castingDate, quantity, period, customDate } = req.body;
-
     const order = await resolveOrder(orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: "Order not found" });
@@ -197,64 +180,35 @@ export const updateCubeTest = async (req, res) => {
       return res.status(404).json({ success: false, message: "Cube test not found" });
     }
 
-    const nextPeriod = period || existing.period;
-    const nextCastingDate = castingDate ? new Date(castingDate) : existing.castingDate;
-
-    let nextToDate = existing.toDate;
-    if (nextPeriod === "CUSTOM") {
-      if (customDate) {
-        const { error, toDate } = resolveToDate("CUSTOM", nextCastingDate, customDate, order);
-        if (error) {
-          return res.status(400).json({ success: false, message: error });
-        }
-        nextToDate = toDate;
-      } else if (existing.period !== "CUSTOM") {
-        return res.status(422).json({
-          success: false,
-          message: "Validation failed",
-          errors: { customDate: ["The custom date field is required when period is CUSTOM."] },
-        });
-      }
-    } else if (period || castingDate) {
-      // Period changed to a standard one, or casting date moved — recompute.
-      const { error, toDate } = resolveToDate(nextPeriod, nextCastingDate, customDate, order);
-      if (error) return res.status(400).json({ success: false, message: error });
-      nextToDate = toDate;
-    }
-
-    let fileUrl = existing.fileUrl;
-    if (req.file) {
-      if (existing.fileUrl) {
-        deleteCubeTestFile(orderId, existing.fileUrl.split("/").pop());
-      }
-      fileUrl = getCubeTestPublicUrl(orderId, req.file.filename);
-    }
-
-    const updated = await db.cubeTest.update({
-      where: { id: cubeTestId },
-      data: {
-        ...(castingDate && { castingDate: nextCastingDate }),
-        ...(quantity && { quantity }),
-        ...(period && { period }),
-        fromDate: nextCastingDate,
-        toDate: nextToDate,
-        fileUrl,
-      },
-    });
+    const r = await saveCubeTest({ order, existing, body: req.body, files: uploadedFiles(req), actor: await panelActor(req) });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+    const updated = r.cubeTest;
 
     await createActivityLog({
       title: "Cube test updated",
-      description: `Cube test updated on order ${orderId}`,
+      description: `Cube test updated on order ${orderId}${r.added ? `, ${r.added} file(s) attached` : ""}`,
       entityType: "ORDER",
       entityId: order.id,
       action: "UPDATED",
       createdById: Number(req.user?.data?.id) || null,
     });
 
+    if (r.resultAdded) {
+      await sendNotification({
+        targetType: "CLIENT",
+        targetId: order.clientId,
+        title: "Cube test result added",
+        message: `The cube test result for order ${orderId} is ready`,
+        type: "STATUS_UPDATED",
+        relatedId: order.id,
+        orderId: order.id,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: "Cube test updated successfully",
-      data: withStatus(updated),
+      data: updated,
     });
   } catch (error) {
     logger.error("Error updating cube test:", error);
@@ -308,6 +262,32 @@ export const deleteCubeTest = async (req, res) => {
   }
 };
 
+/** DELETE /:orderId/cube-test/:cubeTestId/attachments/:attachmentId — any file (soft). */
+export const deleteAttachment = async (req, res) => {
+  try {
+    const { orderId, cubeTestId, attachmentId } = req.params;
+    const order = await resolveOrder(orderId);
+    const existing = order && await db.cubeTest.findFirst({ where: { id: cubeTestId, orderId: order.id, isDeleted: false } });
+    if (!existing) return res.status(404).json({ success: false, message: "Cube test not found" });
+
+    const r = await removeAttachment({ cubeTestId, attachmentId });
+    if (r.status) return res.status(r.status).json({ success: false, message: r.message });
+
+    await createActivityLog({
+      title: "Cube test file removed",
+      description: `Removed ${r.removed.fileName || "a file"} from a cube test on order ${orderId}`,
+      entityType: "ORDER",
+      entityId: order.id,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
+    return res.status(200).json({ success: true, message: "Attachment removed", data: r.cubeTest });
+  } catch (error) {
+    logger.error("Error removing cube test attachment:", error);
+    return res.status(500).json({ success: false, message: "Failed to remove attachment" });
+  }
+};
+
 /**
  * GET /orders/cube-tests?dateFrom=&dateTo= — all cube tests whose TEST date
  * falls in the window (what the lab needs to plan for), with their order.
@@ -318,6 +298,7 @@ export async function listAllCubeTests(req, res) {
     const rows = await db.cubeTest.findMany({
       where: { isDeleted: false, order: { isDeleted: false }, ...(due && { toDate: due }) },
       include: {
+        ...WITH_ATTACHMENTS,
         order: { select: { orderId: true, productName: true, productGrade: true, status: true, date: true,
           client: { select: { companyName: true } }, project: { select: { projectName: true } } } },
       },

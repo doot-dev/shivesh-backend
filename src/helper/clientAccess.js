@@ -12,7 +12,7 @@ import db from '../config/database.js';
 export const CLIENT_MODULES = [
   { key: 'orders', label: 'Orders', description: 'See, place, cancel and discuss orders.', actions: ['view', 'create', 'cancel', 'comment'] },
   { key: 'trucks', label: 'Trucks', description: 'Reject a truck at site before its challan.', actions: ['reject'] },
-  { key: 'cubeTests', label: 'Cube tests', description: 'See cube test results.', actions: ['view'] },
+  { key: 'cubeTests', label: 'Cube tests', description: 'See cube tests; manage = log and edit tests and add result files.', actions: ['view', 'manage'] },
   { key: 'bills', label: 'Bills & invoices', description: 'Bills list and invoice PDFs.', actions: ['view'] },
   { key: 'account', label: 'Credit & statement', description: 'Credit used and available, dues, statement and payments.', actions: ['view'] },
   { key: 'team', label: 'Team', description: "Add and remove the company's own app users.", actions: ['manage'] },
@@ -23,7 +23,7 @@ export const CLIENT_PERMISSIONS = CLIENT_MODULES.flatMap((m) => m.actions.map((a
 /** Built-in roles, created by scripts/backfill_client_contacts.mjs. Owner is the locked system role. */
 export const STARTER_ROLES = [
   { name: 'Owner', isSystem: true, description: 'Company owner. Always holds everything.', permissions: CLIENT_PERMISSIONS },
-  { name: 'Site Engineer', description: 'Places orders and handles trucks at site.', permissions: ['orders.view', 'orders.create', 'orders.comment', 'trucks.reject', 'cubeTests.view'] },
+  { name: 'Site Engineer', description: 'Places orders and handles trucks at site.', permissions: ['orders.view', 'orders.create', 'orders.comment', 'trucks.reject', 'cubeTests.view', 'cubeTests.manage'] },
   { name: 'Accounts', description: 'Bills, statement and payments.', permissions: ['orders.view', 'bills.view', 'account.view'] },
   { name: 'Viewer', description: 'Read only: orders and cube tests.', permissions: ['orders.view', 'cubeTests.view'] },
 ];

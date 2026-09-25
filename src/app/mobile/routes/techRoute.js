@@ -4,7 +4,7 @@ import * as orderController from '../controllers/orderController.js';
 import * as tmController from '../controllers/tmController.js';
 import * as cubeTestController from '../controllers/cubeTestController.js';
 import { verifyTechToken } from '../middleware/mobileAuth.js';
-import { uploadSingleCubeTestFile } from '../../../config/cubeTestUploadConfig.js';
+import { uploadCubeTestFiles } from '../../../config/cubeTestUploadConfig.js';
 import { uploadSingleOrderChallan } from '../../../config/challanUploadConfig.js';
 
 const router = Router();
@@ -46,7 +46,7 @@ router.put('/orders/:orderId/tm/:tmId/reached', verifyTechToken, tmController.ma
 
 // Cube testing reports.
 //
-// uploadSingleCubeTestFile runs AFTER verifyTechToken on purpose: multer parses
+// uploadCubeTestFiles runs AFTER verifyTechToken on purpose: multer parses
 // the multipart body, and letting an unauthenticated request stream a 10MB file
 // to disk before the token is checked is free storage for anyone with the URL.
 // Cross-order feed for the "Cube Tests" tab. Declared BEFORE the
@@ -58,19 +58,24 @@ router.get('/orders/:orderId/cube-test', verifyTechToken, cubeTestController.lis
 router.post(
   '/orders/:orderId/cube-test',
   verifyTechToken,
-  uploadSingleCubeTestFile,
+  uploadCubeTestFiles,
   cubeTestController.createCubeTest,
 );
 router.put(
   '/orders/:orderId/cube-test/:cubeTestId',
   verifyTechToken,
-  uploadSingleCubeTestFile,
+  uploadCubeTestFiles,
   cubeTestController.updateCubeTest,
 );
 router.delete(
   '/orders/:orderId/cube-test/:cubeTestId',
   verifyTechToken,
   cubeTestController.deleteCubeTest,
+);
+router.delete(
+  '/orders/:orderId/cube-test/:cubeTestId/attachments/:attachmentId',
+  verifyTechToken,
+  cubeTestController.deleteAttachment,
 );
 
 export default router;
