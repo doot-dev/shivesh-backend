@@ -64,6 +64,13 @@ assert.equal(r.body.data.quantity, '6');
 assert.equal(r.body.data.attachments.length, 3);
 assert.equal(r.body.data.attachments[2].addedByName, 'Rakesh Pawar');
 
+// 2b. Re-sending the unchanged form is fine, even on an old 14-day test.
+await db.cubeTest.update({ where: { id: ct.id }, data: { period: 'FOURTEEN_DAYS' } });
+r = await call(engineer, 'PUT', `${path}/${ct.id}`, { form: form({ castingDate: order.date, period: 'FOURTEEN_DAYS', quantity: '6' }) });
+assert.equal(r.status, 200, r.body?.message);
+assert.equal(r.body.data.period, 'FOURTEEN_DAYS');
+assert.equal((await call(engineer, 'PUT', `${path}/${ct.id}`, { form: form({ period: 'TWENTYONE_DAYS' }) })).status, 422, 'a new legacy period is still refused');
+
 // 3. Accounts may view but not log or edit.
 assert.equal((await call(accounts, 'POST', path, { form: form({ castingDate: order.date, quantity: '3', period: 'SEVEN_DAYS' }) })).status, 403);
 r = await call(accounts, 'PUT', `${path}/${ct.id}`, { form: form({ quantity: '9' }) });

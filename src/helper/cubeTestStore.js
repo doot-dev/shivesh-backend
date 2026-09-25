@@ -52,7 +52,14 @@ async function syncFileUrl(tx, cubeTestId) {
  * Returns { status, message } when refused, else { cubeTest, added, resultAdded }.
  */
 export async function saveCubeTest({ order, existing = null, body = {}, files = [], actor }) {
-  const { castingDate, quantity, period, customDate } = body;
+  const { quantity } = body;
+  // On an edit, a value equal to the saved one is not a change: forms re-send
+  // everything, and an old test (a 14-day period, a casting date the rules
+  // would refuse today) must still take new files and a new quantity.
+  const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+  const period = body.period && body.period !== existing?.period ? body.period : undefined;
+  const castingDate = body.castingDate && !(existing && sameDay(body.castingDate, existing.castingDate)) ? body.castingDate : undefined;
+  const customDate = body.customDate && !(existing?.period === 'CUSTOM' && sameDay(body.customDate, existing.toDate)) ? body.customDate : undefined;
 
   if (!existing && (!castingDate || !quantity || !period)) {
     return { status: 400, message: 'castingDate, quantity and period are required' };
