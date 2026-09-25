@@ -8,6 +8,7 @@ import {
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { sendNotification } from "../../../helper/notificationHelper.js";
 import { resolveToDate, withStatus } from "../../../helper/cubeTest.js";
+import { dateTimeDayRange } from "../../../helper/dateRange.js";
 import { productByName } from "../../../helper/productUnits.js";
 import {
   getCubeTestPublicUrl,
@@ -306,3 +307,34 @@ export const deleteCubeTest = async (req, res) => {
     });
   }
 };
+
+/**
+ * GET /orders/cube-tests?dateFrom=&dateTo= — all cube tests whose TEST date
+ * falls in the window (what the lab needs to plan for), with their order.
+ */
+export async function listAllCubeTests(req, res) {
+  try {
+    const due = dateTimeDayRange(req.query.dateFrom, req.query.dateTo);
+    const rows = await db.cubeTest.findMany({
+      where: { isDeleted: false, order: { isDeleted: false }, ...(due && { toDate: due }) },
+      include: {
+        order: { select: { orderId: true, productName: true, productGrade: true, status: true, date: true,
+          client: { select: { companyName: true } }, project: { select: { projectName: true } } } },
+      },
+      orderBy: { toDate: "asc" },
+      take: 1000,
+    });
+    const data = rows.map(({ order, ...ct }) => ({
+      ...withStatus(ct),
+      orderCode: order.orderId,
+      clientName: order.client?.companyName || "—",
+      projectName: order.project?.projectName || "—",
+      productName: order.productName,
+      productGrade: order.productGrade,
+    }));
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.error("admin listAllCubeTests error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}

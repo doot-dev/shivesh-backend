@@ -1,4 +1,5 @@
 import db from '../../../config/database.js';
+import { dateTimeDayRange } from '../../../helper/dateRange.js';
 import { buildLedger } from '../../admin/controllers/paymentController.js';
 import { getCreditPosition } from '../../../helper/creditPosition.js';
 import { buildInvoicePdf } from '../../../helper/invoicePdf.js';
@@ -321,10 +322,12 @@ const CLIENT_BILL_STATUSES = ['SENT', 'PAID', 'OVERDUE', 'PARTIALLY_PAID'];
 /** GET /client/bills?projectId= — the client's issued bills (W16). */
 export async function listBills(req, res) {
   try {
-    const { projectId } = req.query;
+    const { projectId, dateFrom, dateTo } = req.query;
+    const issued = dateTimeDayRange(dateFrom, dateTo);
     const bills = await db.bill.findMany({
       where: {
         isDeleted: false,
+        ...(issued && { issueDate: issued }),
         status: { in: CLIENT_BILL_STATUSES },
         order: { clientId: req.user.data.id, isDeleted: false, ...orderProjectScope(req.clientAccess), ...(projectId && { project: { projectId } }) },
       },

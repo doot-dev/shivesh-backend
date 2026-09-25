@@ -1,4 +1,5 @@
 import db from "../../../config/database.js";
+import { isoDayRange } from "../../../helper/dateRange.js";
 import logger from "../../../helper/logger.js";
 import { validatorFunction } from "../../../helper/validate.js";
 import {
@@ -208,8 +209,11 @@ export async function listOrders(req, res) {
       clientId,
       assignedToId,
       search,
+      dateFrom,
+      dateTo,
     } = req.query;
     const pageNum = parseInt(page);
+    const dateWindow = isoDayRange(dateFrom, dateTo);
     const limitNum = parseInt(limit);
 
     const where = {
@@ -227,6 +231,8 @@ export async function listOrders(req, res) {
       ...(clientId && {
         client: { clientId },
       }),
+      // Delivery-date window (the panel defaults to past 7 → next 10 days).
+      ...(dateWindow && { date: dateWindow }),
       ...(search && {
         OR: [
           { orderId: { contains: search } },

@@ -44,6 +44,7 @@ router.delete('/:orderId/cube-test/:cubeTestId', verifyToken, requirePermission(
 router.post('/:orderId/credit-release', verifyToken, requirePermission(can('orders', 'approve')), orderController.releaseCreditHold);
 
 // Order routes
+router.get('/cube-tests', verifyToken, requirePermission(can('cubeTests', 'view')), cubeTestController.listAllCubeTests);
 router.get('/field-techs', verifyToken, requirePermission(can('orders', 'view')), orderController.listFieldTechs);
 router.get('/', verifyToken, requirePermission(can('orders', 'view')), orderController.listOrders);
 router.post('/', verifyToken, requirePermission(can('orders', 'create')), orderController.createOrder);
