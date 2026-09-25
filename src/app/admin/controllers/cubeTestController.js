@@ -6,37 +6,13 @@ import {
   updateCubeTestValidation,
 } from "../validations/cubeTestValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
+import { sendNotification } from "../../../helper/notificationHelper.js";
+import { resolveToDate, withStatus } from "../../../helper/cubeTest.js";
+import { productByName } from "../../../helper/productUnits.js";
 import {
   getCubeTestPublicUrl,
   deleteCubeTestFile,
 } from "../../../config/cubeTestUploadConfig.js";
-
-const PERIOD_DAYS = {
-  SEVEN_DAYS: 7,
-  FOURTEEN_DAYS: 14,
-  TWENTYONE_DAYS: 21,
-};
-
-/**
- * Resolve `toDate` from the casting date + period.
- *
- * Standard periods are a scheduled test date, so they're allowed to land in
- * the future. Custom is a backdated record of a test that already happened,
- * so it must not be in the future.
- */
-function resolveToDate(period, castingDate, customDate) {
-  if (period === "CUSTOM") {
-    const custom = new Date(customDate);
-    if (custom.getTime() > Date.now()) {
-      return { error: "Custom date cannot be a future date" };
-    }
-    return { toDate: custom };
-  }
-
-  const toDate = new Date(castingDate);
-  toDate.setDate(toDate.getDate() + PERIOD_DAYS[period]);
-  return { toDate };
-}
 
 async function resolveOrder(orderId) {
   return db.order.findFirst({ where: { orderId, isDeleted: false } });
@@ -70,7 +46,12 @@ export const createCubeTest = async (req, res) => {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
-    const { error, toDate } = resolveToDate(period, castingDate, customDate);
+    // W38: cube tests only make sense for concrete.
+    if ((await productByName(order.productName))?.isConcrete === false) {
+      return res.status(400).json({ success: false, message: "Cube tests apply only to concrete products" });
+    }
+
+    const { error, toDate } = resolveToDate(period, castingDate, customDate, order);
     if (error) {
       return res.status(400).json({ success: false, message: error });
     }
@@ -99,10 +80,20 @@ export const createCubeTest = async (req, res) => {
       createdById: Number(req.user?.data?.id) || null,
     });
 
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: order.clientId,
+      title: cubeTest.fileUrl ? "Cube test result added" : "Cube Test Added",
+      message: `A cube test was logged for order ${orderId}, testing on ${toDate.toDateString()}`,
+      type: "STATUS_UPDATED",
+      relatedId: order.id,
+      orderId: order.id,
+    });
+
     return res.status(201).json({
       success: true,
       message: "Cube test created successfully",
-      data: cubeTest,
+      data: withStatus(cubeTest),
     });
   } catch (error) {
     logger.error("Error creating cube test:", error);
@@ -129,7 +120,7 @@ export const getCubeTests = async (req, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    return res.status(200).json({ success: true, data: cubeTests });
+    return res.status(200).json({ success: true, data: cubeTests.map(withStatus) });
   } catch (error) {
     logger.error("Error fetching cube tests:", error);
     return res.status(500).json({
@@ -158,7 +149,7 @@ export const getCubeTest = async (req, res) => {
       return res.status(404).json({ success: false, message: "Cube test not found" });
     }
 
-    return res.status(200).json({ success: true, data: cubeTest });
+    return res.status(200).json({ success: true, data: withStatus(cubeTest) });
   } catch (error) {
     logger.error("Error fetching cube test:", error);
     return res.status(500).json({
@@ -211,7 +202,7 @@ export const updateCubeTest = async (req, res) => {
     let nextToDate = existing.toDate;
     if (nextPeriod === "CUSTOM") {
       if (customDate) {
-        const { error, toDate } = resolveToDate("CUSTOM", nextCastingDate, customDate);
+        const { error, toDate } = resolveToDate("CUSTOM", nextCastingDate, customDate, order);
         if (error) {
           return res.status(400).json({ success: false, message: error });
         }
@@ -225,7 +216,8 @@ export const updateCubeTest = async (req, res) => {
       }
     } else if (period || castingDate) {
       // Period changed to a standard one, or casting date moved — recompute.
-      const { toDate } = resolveToDate(nextPeriod, nextCastingDate, customDate);
+      const { error, toDate } = resolveToDate(nextPeriod, nextCastingDate, customDate, order);
+      if (error) return res.status(400).json({ success: false, message: error });
       nextToDate = toDate;
     }
 
@@ -261,7 +253,7 @@ export const updateCubeTest = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Cube test updated successfully",
-      data: updated,
+      data: withStatus(updated),
     });
   } catch (error) {
     logger.error("Error updating cube test:", error);

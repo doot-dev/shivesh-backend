@@ -9,7 +9,7 @@ export const createCubeTestValidation = {
   orderId: "required|string",
   castingDate: "required|date",
   quantity: "required|string",
-  period: "required|in:SEVEN_DAYS,FOURTEEN_DAYS,TWENTYONE_DAYS,CUSTOM",
+  period: "required|in:SEVEN_DAYS,FIFTEEN_DAYS,TWENTYEIGHT_DAYS,CUSTOM", // D21: 14/21 kept only for old rows
   customDate: "required_if:period,CUSTOM|date",
 };
 
@@ -18,6 +18,6 @@ export const updateCubeTestValidation = {
   cubeTestId: "required|string",
   castingDate: "date",
   quantity: "string",
-  period: "in:SEVEN_DAYS,FOURTEEN_DAYS,TWENTYONE_DAYS,CUSTOM",
+  period: "in:SEVEN_DAYS,FIFTEEN_DAYS,TWENTYEIGHT_DAYS,CUSTOM",
   customDate: "required_if:period,CUSTOM|date",
 };

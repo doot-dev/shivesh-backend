@@ -15,4 +15,12 @@ router.get(
   reportController.getClientOutstandingBills,
 );
 
+// Phase 1B — Excel CA Pack (reports.export), analytics and credit (reports.view).
+router.get('/export/:register', verifyToken, requirePermission(can('reports', 'export')), reportController.exportRegister);
+router.get('/ca-pack', verifyToken, requirePermission(can('reports', 'export')), reportController.exportCaPack);
+router.get('/analytics', verifyToken, requirePermission(can('reports', 'view')), reportController.portfolioAnalytics);
+router.get('/clients/:clientId/analytics', verifyToken, requirePermission(can('reports', 'view')), reportController.clientAnalytics);
+// Credit is needed while booking an order, so orders.create may read it too.
+router.get('/clients/:clientId/credit', verifyToken, requirePermission(can('reports', 'view'), can('orders', 'create')), reportController.clientCredit);
+
 export default router;

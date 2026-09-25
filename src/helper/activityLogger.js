@@ -1,4 +1,5 @@
 import db from "../config/database.js";
+import logger from "./logger.js";
 
 export const createActivityLog = async ({
   title,
@@ -20,6 +21,7 @@ export const createActivityLog = async ({
       },
     });
   } catch (error) {
-    console.error("Error creating activity log:", error);
+    // Still best-effort, but loud: a lost audit row must show in the logs (W33).
+    logger.error(`Activity log NOT saved (${title}): ${error.message}`);
   }
 };

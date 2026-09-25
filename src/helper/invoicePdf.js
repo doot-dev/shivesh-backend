@@ -1,4 +1,4 @@
-import fs from 'fs/promises';
+import { readUpload } from '../config/objectStorage.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
@@ -56,7 +56,7 @@ async function appendAttachment(doc, url, caption, font) {
   if (!file) return false;
 
   try {
-    const bytes = await fs.readFile(file);
+    const bytes = await readUpload(url);
     const ext = path.extname(file).toLowerCase();
 
     if (ext === '.pdf') {
@@ -158,7 +158,7 @@ export async function buildInvoicePdf(bill, order) {
   const QTY = 360, RATE = 450, AMT = R - 4;
   page.drawRectangle({ x: MARGIN, y: y - 5, width: W - 2 * MARGIN, height: 18, color: rgb(0.95, 0.95, 0.95) });
   text('Description', MARGIN + 4, { isBold: true });
-  text('Qty (m3)', QTY, { isBold: true, align: 'right' });
+  text(`Qty (${order.unit || 'CBM'})`, QTY, { isBold: true, align: 'right' });
   text('Rate', RATE, { isBold: true, align: 'right' });
   text('Amount', AMT, { isBold: true, align: 'right' });
   y -= 22;

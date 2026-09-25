@@ -12,7 +12,10 @@ import {
   updateOrderTmValidation,
 } from "../validations/orderValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
-import { generateBillForOrder } from "./billController.js";
+import { onOrderCompleted } from "../../../helper/orderCompletion.js";
+import { orderStatusBlocked } from "../../../helper/orderStatus.js";
+import { rejectIfLocked, orderEditableUntil } from "../../../helper/updateWindow.js";
+import { quantityError, priceListError } from "../../../helper/orderValidation.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
 import {
@@ -274,7 +277,7 @@ export async function getOrder(req, res) {
         .json({ success: false, message: "Order not found" });
     }
 
-    return res.status(200).json({ success: true, data: order });
+    return res.status(200).json({ success: true, data: { ...order, editableUntil: orderEditableUntil(order) } });
   } catch (error) {
     logger.error("admin getOrder error:", error);
     return res
@@ -331,15 +334,6 @@ export async function createOrder(req, res) {
       });
     }
 
-    const project = await db.project.findFirst({
-      where: { projectId, isDeleted: false },
-    });
-    console.log("createOrder project lookup:", { projectId, found: !!project });
-    if (!project)
-      return res
-        .status(404)
-        .json({ success: false, message: "Project not found" });
-
     const client = await db.client.findFirst({
       where: { clientId, isDeleted: false },
     });
@@ -347,6 +341,21 @@ export async function createOrder(req, res) {
       return res
         .status(404)
         .json({ success: false, message: "Client not found" });
+
+    // The project must belong to this client, otherwise the order (and its
+    // bill and credit) lands on one client at another client's site and rates.
+    const project = await db.project.findFirst({
+      where: { projectId, clientId: client.id, isDeleted: false },
+    });
+    if (!project)
+      return res
+        .status(404)
+        .json({ success: false, message: "Project not found for this client" });
+
+    const lineError = quantityError(quantity) || (await priceListError(project.id, productName, productGrade));
+    if (lineError) {
+      return res.status(400).json({ success: false, message: lineError });
+    }
 
     // Validate every vendor and technician before creating anything, so a bad
     // entry cannot leave a half-populated order behind.
@@ -539,6 +548,16 @@ export async function updateOrder(req, res) {
         .status(404)
         .json({ success: false, message: "Order not found" });
 
+    if (await rejectIfLocked(order, req, res)) return;
+
+    const lineError =
+      (quantity && quantityError(quantity)) ||
+      ((productName || productGrade) &&
+        (await priceListError(order.projectId, productName || order.productName, productGrade || order.productGrade)));
+    if (lineError) {
+      return res.status(400).json({ success: false, message: lineError });
+    }
+
     const updated = await db.order.update({
       where: { id: order.id },
       data: {
@@ -556,6 +575,16 @@ export async function updateOrder(req, res) {
       title: "Order Updated",
       message: `Order ${orderId} has been updated`,
       type: "STATUS_UPDATED",
+    });
+
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: order.clientId,
+      title: "Order Updated",
+      message: `Your order ${orderId} was updated by the office — please check the date, time and quantity`,
+      type: "STATUS_UPDATED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     await createActivityLog({
@@ -616,6 +645,16 @@ export async function updateOrderStatus(req, res) {
         .status(404)
         .json({ success: false, message: "Order not found" });
 
+    if (await rejectIfLocked(order, req, res)) return;
+
+    // W9: one transition table for every status change.
+    const blocked =
+      orderStatusBlocked(order.status, status) ||
+      (deliveryStatus && order.status === "CANCELLED" ? "the order is cancelled" : null);
+    if (blocked) {
+      return res.status(409).json({ success: false, message: `Order ${orderId}: ${blocked}` });
+    }
+
     const updated = await db.order.update({
       where: { id: order.id },
       data: {
@@ -629,6 +668,18 @@ export async function updateOrderStatus(req, res) {
       title: "Order Status Updated",
       message: `Order ${orderId} is now ${status || deliveryStatus}`,
       type: "STATUS_UPDATED",
+    });
+
+    // The client used to get only a live socket event here, which never reaches
+    // a closed app — so "Confirmed" / "Cancelled" set by the office went unseen.
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: order.clientId,
+      title: "Order Status Updated",
+      message: `Your order ${orderId} is now ${(status || deliveryStatus).replace("_", " ")}`,
+      type: "STATUS_UPDATED",
+      relatedId: order.id,
+      orderId: order.id,
     });
 
     await notifyAdmins({
@@ -669,19 +720,15 @@ export async function updateOrderStatus(req, res) {
     // POST /bills/create rather than rolling the status back.
     let bill = null;
     let billError = null;
+    let billPending = null;
 
     if (status === "COMPLETED" && order.status !== "COMPLETED") {
-      const result = await generateBillForOrder(orderId, {
+      const result = await onOrderCompleted(orderId, {
         createdById: Number(req.user?.data?.id) || null,
       });
-
-      if (result.error) {
-        billError = result.error;
-        logger.warn(`Auto-billing skipped for ${orderId}: ${result.error}`);
-      } else {
-        bill = result.bill;
-        logger.info(`Auto-billed order ${orderId} as ${bill.billNo}`);
-      }
+      bill = result.bill ?? null;
+      billError = result.error ?? null;
+      billPending = result.pending ?? null;
     }
 
     return res.status(200).json({
@@ -690,6 +737,7 @@ export async function updateOrderStatus(req, res) {
       data: updated,
       ...(bill && { bill }),
       ...(billError && { billError }),
+      ...(billPending && { billPending }),
     });
   } catch (error) {
     logger.error("admin updateOrderStatus error:", error);
@@ -1443,6 +1491,8 @@ export const createOrderTm = async (req, res) => {
         .json({ success: false, message: "Order not found" });
     }
 
+    if (await rejectIfLocked(order, req, res)) return;
+
     // Deleted rows still count, so a new TM never reuses a number that has
     // already been printed on a challan.
     const existingCount = await db.tmDetail.count({
@@ -1568,6 +1618,8 @@ export const updateOrderTm = async (req, res) => {
         .json({ success: false, message: "Order not found" });
     }
 
+    if (await rejectIfLocked(order, req, res)) return;
+
     const existing = await db.tmDetail.findFirst({
       where: { id: tmId, orderId: order.id, isDeleted: false },
     });
@@ -1638,6 +1690,8 @@ export const deleteOrderTm = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Order not found" });
     }
+
+    if (await rejectIfLocked(order, req, res)) return;
 
     const tm = await db.tmDetail.findFirst({
       where: { id: tmId, orderId: order.id, isDeleted: false },

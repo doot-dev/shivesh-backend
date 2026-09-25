@@ -1,5 +1,9 @@
 import db from "../../../config/database.js";
 import logger from "../../../helper/logger.js";
+import { REGISTERS } from "../../../helper/registers.js";
+import { newWorkbook, addRegisterSheet } from "../../../helper/xlsx.js";
+import { getClientAnalytics, getPortfolioAnalytics } from "../../../helper/clientAnalytics.js";
+import { getCreditPosition } from "../../../helper/creditPosition.js";
 
 /**
  * Admin reporting — client payment behaviour and credit risk.
@@ -345,5 +349,92 @@ export async function getClientOutstandingBills(req, res) {
       message: "Failed to load outstanding bills",
       error: error.message,
     });
+  }
+}
+
+// ─── Phase 1B: exports, analytics, credit ────────────────────────────────────
+
+/** from/to as YYYY-MM-DD (IST, inclusive); defaults to the current financial year. */
+export function parseRange({ from, to } = {}, now = new Date()) {
+  const iso = /^\d{4}-\d{2}-\d{2}$/;
+  const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const f = iso.test(from || '') ? new Date(`${from}T00:00:00`) : new Date(`${fyStart}-04-01T00:00:00`);
+  const t = iso.test(to || '') ? new Date(`${to}T23:59:59.999`) : new Date(`${fyStart + 1}-03-31T23:59:59.999`);
+  return { from: f, to: t, label: `${f.toISOString().slice(0, 10)}_to_${t.toISOString().slice(0, 10)}` };
+}
+
+async function sendWorkbook(res, wb, fileName) {
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  await wb.xlsx.write(res);
+  res.end();
+}
+
+const who = (req) => req.user?.data?.name || req.user?.data?.userName || `user ${req.user?.data?.id ?? ''}`;
+
+/** GET /reports/export/:register — one register as .xlsx (reports.export). */
+export async function exportRegister(req, res) {
+  try {
+    const build = REGISTERS[req.params.register];
+    if (!build) return res.status(404).json({ success: false, message: `Unknown register. Use one of: ${Object.keys(REGISTERS).join(', ')}` });
+    const range = parseRange(req.query);
+    const sheet = await build(range.from, range.to);
+    const wb = newWorkbook();
+    addRegisterSheet(wb, { ...sheet, subtitle: `Shivesh · ${range.label} · generated ${new Date().toLocaleString('en-IN')} by ${who(req)}` });
+    await sendWorkbook(res, wb, `Shivesh_${sheet.name.replace(/\s+/g, '-')}_${range.label}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (error) {
+    logger.error('exportRegister error:', error);
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Export failed', error: error.message });
+  }
+}
+
+/** GET /reports/ca-pack — every register in one workbook (reports.export). */
+export async function exportCaPack(req, res) {
+  try {
+    const range = parseRange(req.query);
+    const wb = newWorkbook();
+    const subtitle = `Shivesh · ${range.label} · generated ${new Date().toLocaleString('en-IN')} by ${who(req)}`;
+    for (const key of ['sales', 'documents', 'outstanding', 'challans', 'orders', 'exceptions', 'audit']) {
+      addRegisterSheet(wb, { ...(await REGISTERS[key](range.from, range.to)), subtitle });
+    }
+    await sendWorkbook(res, wb, `Shivesh_CA-Pack_${range.label}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  } catch (error) {
+    logger.error('exportCaPack error:', error);
+    if (!res.headersSent) res.status(500).json({ success: false, message: 'Export failed', error: error.message });
+  }
+}
+
+/** GET /reports/clients/:clientId/analytics — client page Analysis tab. */
+export async function clientAnalytics(req, res) {
+  try {
+    const data = await getClientAnalytics(req.params.clientId);
+    if (!data) return res.status(404).json({ success: false, message: 'Client not found' });
+    const client = await db.client.findFirst({ where: { clientId: req.params.clientId }, select: { id: true } });
+    return res.status(200).json({ success: true, data: { ...data, credit: await getCreditPosition(client.id) } });
+  } catch (error) {
+    logger.error('clientAnalytics error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to build client analytics' });
+  }
+}
+
+/** GET /reports/analytics — every client, for the Payment behaviour / Collections / Order patterns tabs. */
+export async function portfolioAnalytics(req, res) {
+  try {
+    return res.status(200).json({ success: true, data: await getPortfolioAnalytics() });
+  } catch (error) {
+    logger.error('portfolioAnalytics error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to build analytics' });
+  }
+}
+
+/** GET /reports/clients/:clientId/credit — the credit banner on Add Order / order page (P1.15). */
+export async function clientCredit(req, res) {
+  try {
+    const client = await db.client.findFirst({ where: { clientId: req.params.clientId, isDeleted: false }, select: { id: true } });
+    if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
+    return res.status(200).json({ success: true, data: await getCreditPosition(client.id) });
+  } catch (error) {
+    logger.error('clientCredit error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to load credit' });
   }
 }

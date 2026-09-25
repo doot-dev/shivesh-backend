@@ -5,6 +5,9 @@ import {
   getCubeTestPublicUrl,
   deleteCubeTestFile,
 } from '../../../config/cubeTestUploadConfig.js';
+import { resolveToDate, SELECTABLE_PERIODS, cubeTestStatus, withStatus } from '../../../helper/cubeTest.js';
+import { productByName } from '../../../helper/productUnits.js';
+import { createActivityLog } from '../../../helper/activityLogger.js';
 
 /**
  * Cube testing reports as seen by the FIELD TECHNICIAN app.
@@ -16,39 +19,6 @@ import {
  * has no such restriction, and reusing it on a mobile route would hand any
  * authenticated technician the entire cube-test table.
  */
-
-const PERIOD_DAYS = {
-  SEVEN_DAYS: 7,
-  FOURTEEN_DAYS: 14,
-  TWENTYONE_DAYS: 21,
-};
-
-const VALID_PERIODS = [...Object.keys(PERIOD_DAYS), 'CUSTOM'];
-
-/**
- * Resolve `toDate` from the casting date + period — same rule as the admin side:
- * standard periods are a SCHEDULED future test date, CUSTOM is a backdated
- * record of a test that already happened and so may not be in the future.
- */
-function resolveToDate(period, castingDate, customDate) {
-  if (period === 'CUSTOM') {
-    if (!customDate) {
-      return { error: 'customDate is required when period is CUSTOM' };
-    }
-    const custom = new Date(customDate);
-    if (Number.isNaN(custom.getTime())) {
-      return { error: 'customDate is not a valid date' };
-    }
-    if (custom.getTime() > Date.now()) {
-      return { error: 'Custom date cannot be a future date' };
-    }
-    return { toDate: custom };
-  }
-
-  const toDate = new Date(castingDate);
-  toDate.setDate(toDate.getDate() + PERIOD_DAYS[period]);
-  return { toDate };
-}
 
 /**
  * The order, ONLY if this technician is assigned to it. Returns null otherwise,
@@ -85,6 +55,7 @@ function toFeedRow(ct) {
     fromDate: ct.fromDate,
     toDate: ct.toDate,
     fileUrl: ct.fileUrl,
+    status: cubeTestStatus(ct),
     createdAt: ct.createdAt,
     orderId: ct.order?.orderId ?? null,
     productName: ct.order?.productName ?? null,
@@ -154,8 +125,10 @@ function buildFeedFilters(query) {
   }
   if (Object.keys(castingDate).length) where.castingDate = castingDate;
 
-  if (status === 'due') where.toDate = { lte: new Date() };
+  // due = test date reached and no result yet; done = result attached (W36).
+  if (status === 'due') { where.toDate = { lte: new Date() }; where.fileUrl = null; }
   else if (status === 'upcoming') where.toDate = { gt: new Date() };
+  else if (status === 'done') where.fileUrl = { not: null };
 
   return where;
 }
@@ -257,7 +230,7 @@ export async function listCubeTests(req, res) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return res.status(200).json({ success: true, data: cubeTests });
+    return res.status(200).json({ success: true, data: cubeTests.map(withStatus) });
   } catch (error) {
     logger.error('tech listCubeTests error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -287,10 +260,10 @@ export async function createCubeTest(req, res) {
       });
     }
 
-    if (!VALID_PERIODS.includes(period)) {
+    if (!SELECTABLE_PERIODS.includes(period)) {
       return res.status(422).json({
         success: false,
-        message: `period must be one of ${VALID_PERIODS.join(', ')}`,
+        message: `period must be one of ${SELECTABLE_PERIODS.join(', ')}`,
       });
     }
 
@@ -304,7 +277,12 @@ export async function createCubeTest(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    const { error, toDate } = resolveToDate(period, casting, customDate);
+    // W38: cube tests only make sense for concrete.
+    if ((await productByName(order.productName))?.isConcrete === false) {
+      return res.status(400).json({ success: false, message: 'Cube tests apply only to concrete products' });
+    }
+
+    const { error, toDate } = resolveToDate(period, casting, customDate, order);
     if (error) {
       return res.status(400).json({ success: false, message: error });
     }
@@ -334,12 +312,20 @@ export async function createCubeTest(req, res) {
       orderId: order.id,
     });
 
+    await createActivityLog({
+      title: 'Cube test added (field app)',
+      description: `Cube test on ${orderId}: cast ${casting.toDateString()}, ${period}, testing ${toDate.toDateString()}${fileUrl ? ', result attached' : ''}`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      action: 'CREATED',
+      createdById: Number(userId),
+    });
     logger.info(`Cube test ${cubeTest.id} created on ${orderId} by tech ${userId}`);
 
     return res.status(201).json({
       success: true,
       message: 'Cube test created successfully',
-      data: cubeTest,
+      data: withStatus(cubeTest),
     });
   } catch (error) {
     logger.error('tech createCubeTest error:', error);
@@ -359,10 +345,10 @@ export async function updateCubeTest(req, res) {
     const userId = req.user.data.id;
     const { castingDate, quantity, period, customDate } = req.body;
 
-    if (period && !VALID_PERIODS.includes(period)) {
+    if (period && !SELECTABLE_PERIODS.includes(period)) {
       return res.status(422).json({
         success: false,
-        message: `period must be one of ${VALID_PERIODS.join(', ')}`,
+        message: `period must be one of ${SELECTABLE_PERIODS.join(', ')}`,
       });
     }
 
@@ -388,7 +374,7 @@ export async function updateCubeTest(req, res) {
     let nextToDate = existing.toDate;
     if (nextPeriod === 'CUSTOM') {
       if (customDate) {
-        const { error, toDate } = resolveToDate('CUSTOM', nextCastingDate, customDate);
+        const { error, toDate } = resolveToDate('CUSTOM', nextCastingDate, customDate, order);
         if (error) return res.status(400).json({ success: false, message: error });
         nextToDate = toDate;
       } else if (existing.period !== 'CUSTOM') {
@@ -398,7 +384,8 @@ export async function updateCubeTest(req, res) {
         });
       }
     } else if (period || castingDate) {
-      const { toDate } = resolveToDate(nextPeriod, nextCastingDate, customDate);
+      const { error, toDate } = resolveToDate(nextPeriod, nextCastingDate, customDate, order);
+      if (error) return res.status(400).json({ success: false, message: error });
       nextToDate = toDate;
     }
 
@@ -409,6 +396,8 @@ export async function updateCubeTest(req, res) {
       }
       fileUrl = getCubeTestPublicUrl(orderId, req.file.filename);
     }
+
+    const resultAdded = Boolean(req.file) && !existing.fileUrl;
 
     const updated = await db.cubeTest.update({
       where: { id: cubeTestId },
@@ -422,10 +411,30 @@ export async function updateCubeTest(req, res) {
       },
     });
 
+    await createActivityLog({
+      title: 'Cube test updated (field app)',
+      description: `Cube test on ${orderId}: test date ${new Date(existing.toDate).toDateString()} → ${new Date(updated.toDate).toDateString()}${resultAdded ? ', result attached' : ''}`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      action: 'UPDATED',
+      createdById: Number(userId),
+    });
+    if (resultAdded) {
+      await sendNotification({
+        targetType: 'CLIENT',
+        targetId: order.clientId,
+        title: 'Cube test result added',
+        message: `The cube test result for order ${orderId} is ready`,
+        type: 'STATUS_UPDATED',
+        relatedId: order.id,
+        orderId: order.id,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Cube test updated successfully',
-      data: updated,
+      data: withStatus(updated),
     });
   } catch (error) {
     logger.error('tech updateCubeTest error:', error);
@@ -457,6 +466,14 @@ export async function deleteCubeTest(req, res) {
       data: { isDeleted: true },
     });
 
+    await createActivityLog({
+      title: 'Cube test deleted (field app)',
+      description: `Cube test (testing ${new Date(existing.toDate).toDateString()}) deleted on ${orderId}`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      action: 'UPDATED',
+      createdById: Number(userId),
+    });
     return res.status(200).json({ success: true, message: 'Cube test deleted successfully' });
   } catch (error) {
     logger.error('tech deleteCubeTest error:', error);

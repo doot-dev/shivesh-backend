@@ -12,6 +12,8 @@ import { initFirebase } from './helper/firebase.js';
 import adminApiRoutes from './app/admin/routes/index.js';
 import mobileApiRoutes from './app/mobile/routes/index.js';
 import { getSocketCount } from './realtime/socketServer.js';
+import { serveUploads, ensureBucket } from './config/objectStorage.js';
+import { requireUploadAuth } from './middleware/uploadAuth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,7 +41,10 @@ app.use(cors({
 
 
 // Serve static files from public directory
-app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+// MinIO first (see config/objectStorage.js); files not in the bucket fall through
+// to the legacy disk copy.
+app.use('/uploads', requireUploadAuth, serveUploads, express.static(path.join(__dirname, '../public/uploads')));
+ensureBucket().catch((err) => logger.error('MinIO bucket check failed:', err));
 
 // Compression middleware
 app.use(compression());

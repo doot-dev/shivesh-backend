@@ -1,4 +1,5 @@
 import { validatorFunction } from "../../../helper/validate.js";
+import { PRODUCT_UNITS } from '../../../helper/productUnits.js';
 import { createProductValidation, createSizeValidation, deleteProductValidation, deleteSizeValidation, getProductByIdValidation, getSizeByIdValidation, updateProductValidation, updateSizeValidation } from "../validations/productValidation.js";
 import db from "../../../config/database.js";
 import logger from "../../../helper/logger.js";
@@ -24,10 +25,15 @@ export async function createProduct(req, res) {
             return res.status(422).json({ message: "Validation Error", data: err, success: false });
         }
 
-        const { name } = req.body;
+        const { name, unit, isConcrete } = req.body;
+        if (unit && !PRODUCT_UNITS.includes(unit)) {
+            return res.status(422).json({ success: false, message: `unit must be one of ${PRODUCT_UNITS.join(', ')}` });
+        }
         const data = await db.product.create({
             data: {
                 name,
+                ...(unit && { unit }),
+                ...(isConcrete !== undefined && { isConcrete: isConcrete === true || isConcrete === 'true' }),
             },
             include: {
                 size: true
@@ -67,7 +73,10 @@ export async function updateProduct(req, res) {
             return res.status(422).json({ message: "Validation Error", data: err, success: false });
         }
 
-        const { id, name, isActive } = req.body;
+        const { id, name, isActive, unit, isConcrete } = req.body;
+        if (unit && !PRODUCT_UNITS.includes(unit)) {
+            return res.status(422).json({ success: false, message: `unit must be one of ${PRODUCT_UNITS.join(', ')}` });
+        }
 
         const existingProduct = await db.product.findUnique({
             where: { id: parseInt(id), isDeleted: false }
@@ -78,7 +87,12 @@ export async function updateProduct(req, res) {
 
         const updatedProduct = await db.product.update({
             where: { id: parseInt(id) },
-            data: { name, isActive }
+            data: {
+                name,
+                isActive,
+                ...(unit && { unit }),
+                ...(isConcrete !== undefined && { isConcrete: isConcrete === true || isConcrete === 'true' }),
+            }
         });
 
         return res.status(200).json({ success: true, message: "Product updated successfully", data: updatedProduct });

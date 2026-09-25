@@ -4,6 +4,8 @@ import * as cubeTestController from '../controllers/cubeTestController.js';
 import { verifyToken } from '../../../config/jwtConfig.js';
 import { uploadSingleCubeTestFile } from '../../../config/cubeTestUploadConfig.js';
 import { requirePermission, can } from '../../../helper/accessControl.js';
+import * as billController from '../controllers/billController.js';
+import { uploadSingleOrderChallan } from '../../../config/challanUploadConfig.js';
 
 const router = Router();
 
@@ -18,6 +20,11 @@ router.post('/technician/create', verifyToken, requirePermission(can('orders', '
 router.get('/:orderId/technician/list', verifyToken, requirePermission(can('orders', 'view')), orderController.getOrderTechnicians);
 router.put('/technician', verifyToken, requirePermission(can('orders', 'update')), orderController.updateOrderTechnician);
 router.delete('/:orderId/technician/:orderTechnicianId', verifyToken, requirePermission(can('orders', 'update')), orderController.deleteOrderTechnician);
+
+// TM review on the ORDER (W11): challan upload + accept/reject before any bill
+// exists. Same handlers and permissions as the /bills/:billNo/tm/... routes.
+router.post('/:orderId/tm/:tmId/challan', verifyToken, requirePermission(can('billing', 'update')), uploadSingleOrderChallan, billController.uploadTmChallan);
+router.put('/:orderId/tm/:tmId/approval', verifyToken, requirePermission(can('billing', 'approve')), billController.updateTmApproval);
 
 // Order TM routes
 router.post('/:orderId/tm', verifyToken, requirePermission(can('orders', 'update')), orderController.createOrderTm);

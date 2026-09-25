@@ -10,7 +10,10 @@ import {
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { sendNotification } from "../../../helper/notificationHelper.js";
 import { getBillDocPublicUrl } from "../../../config/billUploadConfig.js";
-import { getChallanPublicUrl } from "../../../config/challanUploadConfig.js";
+import { getChallanPublicUrl, getOrderChallanPublicUrl } from "../../../config/challanUploadConfig.js";
+import { billIfReady } from "../../../helper/orderCompletion.js";
+import { rejectIfLocked } from "../../../helper/updateWindow.js";
+import { productByName } from "../../../helper/productUnits.js";
 import { buildInvoicePdf } from "../../../helper/invoicePdf.js";
 
 /**
@@ -19,6 +22,25 @@ import { buildInvoicePdf } from "../../../helper/invoicePdf.js";
  * TM review happens against a generated bill, so both endpoints below address a
  * TM through its billNo rather than its order.
  */
+/**
+ * Resolve a TM from either route: /bills/:billNo/tm/:tmId (legacy, needs a bill)
+ * or /orders/:orderId/tm/:tmId (W11 — review before any bill exists).
+ * Returns { tm, orderCode } or { error, statusCode }.
+ */
+async function resolveTm({ billNo, orderId, tmId }) {
+  if (billNo) {
+    const r = await resolveBillTm(billNo, tmId);
+    if (r.error) return r;
+    const order = await db.order.findFirst({ where: { id: r.tm.orderId } });
+    return { tm: r.tm, order, orderCode: order.orderId };
+  }
+  const order = await db.order.findFirst({ where: { orderId, isDeleted: false } });
+  if (!order) return { error: "Order not found", statusCode: 404 };
+  const tm = await db.tmDetail.findFirst({ where: { id: tmId, orderId: order.id, isDeleted: false } });
+  if (!tm) return { error: "TM detail not found on this order", statusCode: 404 };
+  return { tm, order, orderCode: order.orderId };
+}
+
 async function resolveBillTm(billNo, tmId) {
   const bill = await db.bill.findFirst({ where: { billNo, isDeleted: false } });
 
@@ -39,6 +61,18 @@ async function resolveBillTm(billNo, tmId) {
 
 // Bills are locked once money has moved or the bill is void.
 export const LOCKED_BILL_STATUSES = ["PAID", "CANCELLED"];
+
+/**
+ * Why a bill may not move from `from` to `to`, or null if it may.
+ * Exported for scripts/verify_bill_status_rules.mjs.
+ */
+export function billStatusChangeBlocked(from, to, access) {
+  if (from === to) return null;
+  if (from === "CANCELLED") return "a cancelled bill is final";
+  if (from === "PAID") return "a paid bill cannot move back";
+  if (to === "CANCELLED" && !access?.isSuperAdmin) return "only the Super Admin can cancel a bill";
+  return null;
+}
 
 // Only a finished order can be billed.
 export const BILLABLE_ORDER_STATUS = "COMPLETED";
@@ -90,6 +124,9 @@ async function resolveRate(order, overrideRate) {
   return { rate: projectProduct.costPrice };
 }
 
+/** Same include the invoice PDF uses — shared with the client-app invoice download. */
+export const invoiceOrderInclude = () => buildBillOrderInclude();
+
 function buildBillOrderInclude() {
   return {
     project: { select: { projectId: true, projectName: true, siteName: true, projectLocation: true } },
@@ -105,7 +142,7 @@ function buildBillOrderInclude() {
       where: { isDeleted: false },
       include: { user: { select: { id: true, name: true, employeeId: true, phone: true } } },
     },
-    // Shown on the bill page for reference. TMs never affect the billed amount.
+    // Shown on the bill page. Auto-bills use the accepted truck total (D4).
     tmDetails: { where: { isDeleted: false }, orderBy: { createdAt: "asc" } },
   };
 }
@@ -170,7 +207,21 @@ async function buildBillPayload(bill, order) {
       approvalStatus: tm.approvalStatus,
       rejectionReason: tm.rejectionReason,
       approvedAt: tm.approvedAt,
+      rejectedByType: tm.rejectedByType,
+      rejectedAt: tm.rejectedAt,
     })),
+    // P1.13 / G10: ordered vs delivered vs accepted vs billed, side by side.
+    quantities: (() => {
+      const q = (v) => { const n = parseFloat(String(v ?? "")); return Number.isFinite(n) ? n : 0; };
+      const live = order.tmDetails.filter((tm) => tm.approvalStatus !== "REJECTED");
+      const r3 = (n) => Math.round(n * 1000) / 1000;
+      return {
+        ordered: q(order.quantity),
+        delivered: r3(live.reduce((s, tm) => s + q(tm.qty), 0)),
+        accepted: r3(order.tmDetails.filter((tm) => tm.approvalStatus === "ACCEPTED").reduce((s, tm) => s + q(tm.qty), 0)),
+        billed: bill.quantity,
+      };
+    })(),
     activityLog: activityLog.map((a) => ({
       id: a.id,
       title: a.title,
@@ -192,7 +243,7 @@ async function buildBillPayload(bill, order) {
  */
 export async function generateBillForOrder(
   orderId,
-  { rate: overrideRate, dueDate, createdById } = {},
+  { rate: overrideRate, dueDate, createdById, quantity: overrideQuantity } = {},
 ) {
   const order = await db.order.findFirst({
     where: { orderId, isDeleted: false },
@@ -222,7 +273,11 @@ export async function generateBillForOrder(
     };
   }
 
-  const { error: qtyError, quantity } = resolveQuantity(order);
+  // billIfReady passes the accepted truck total (D4); the manual endpoint falls
+  // back to the ordered quantity.
+  const { error: qtyError, quantity } = overrideQuantity
+    ? { quantity: overrideQuantity }
+    : resolveQuantity(order);
   if (qtyError) {
     return { error: qtyError, statusCode: 400 };
   }
@@ -324,7 +379,8 @@ export const createBill = async (req, res) => {
  */
 export const getBillList = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, clientId, search } = req.query;
+    const { page = 1, limit = 20, status, clientId, search, dateFrom, dateTo } = req.query;
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
@@ -332,6 +388,13 @@ export const getBillList = async (req, res) => {
       isDeleted: false,
       ...(status && { status }),
       ...(clientId && { order: { client: { clientId } } }),
+      // G16: server-side invoice-date range (IST, inclusive).
+      ...((iso.test(dateFrom || "") || iso.test(dateTo || "")) && {
+        issueDate: {
+          ...(iso.test(dateFrom || "") && { gte: new Date(`${dateFrom}T00:00:00`) }),
+          ...(iso.test(dateTo || "") && { lte: new Date(`${dateTo}T23:59:59.999`) }),
+        },
+      }),
       ...(search && {
         OR: [
           { billNo: { contains: search } },
@@ -365,14 +428,27 @@ export const getBillList = async (req, res) => {
       }),
       db.bill.count({ where }),
     ]);
+    const sums = await db.bill.aggregate({ where, _sum: { amount: true, quantity: true } });
 
+    const now = new Date();
     const data = bills.map((bill) => ({
       ...bill,
       orderId: bill.order.orderId,
       assignedTrucks: bill.order._count.tmDetails,
+      // G18: computed "Overdue · N days" — nothing flips the stored status.
+      daysOverdue:
+        ["PENDING", "SENT", "OVERDUE"].includes(bill.status) && bill.dueDate && new Date(bill.dueDate) < now
+          ? Math.floor((now - new Date(bill.dueDate)) / 864e5)
+          : 0,
     }));
 
-    return res.status(200).json({ success: true, data, total, page: pageNum });
+    return res.status(200).json({
+      success: true,
+      data,
+      total,
+      page: pageNum,
+      totals: { amount: sums._sum.amount || 0, quantity: sums._sum.quantity || 0 },
+    });
   } catch (error) {
     logger.error("Error fetching bills:", error);
     return res.status(500).json({
@@ -440,7 +516,17 @@ export const downloadInvoice = async (req, res) => {
       return res.status(404).json({ success: false, message: "Order not found" });
     }
 
+    order.unit = (await productByName(order.productName))?.unit; // W38
     const pdf = await buildInvoicePdf(bill, order);
+
+    await createActivityLog({
+      title: "Invoice downloaded",
+      description: `Invoice PDF for bill ${billNo} generated/downloaded`,
+      entityType: "ORDER",
+      entityId: bill.orderId,
+      action: "LOGGED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
 
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", `inline; filename="Invoice-${bill.billNo}.pdf"`);
@@ -478,10 +564,10 @@ export const uploadBillDocument = async (req, res) => {
     await createActivityLog({
       title: "Bill document uploaded",
       description: `Document uploaded for bill ${billNo}`,
-      entityType: "BILL",
-      entityId: bill.id,
-      action: "UPDATE",
-      createdById: req.user?.id,
+      entityType: "ORDER",
+      entityId: bill.orderId,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.id) || null,
     });
 
     return res.status(200).json({ success: true, data: updated });
@@ -644,6 +730,13 @@ export const updateBillStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: "Bill not found" });
     }
 
+    // G4 / D5: an issued bill must not quietly unlock. CANCELLED is final, a
+    // PAID bill never moves back, and only the Super Admin may cancel.
+    const blocked = billStatusChangeBlocked(bill.status, status, req.access);
+    if (blocked) {
+      return res.status(409).json({ success: false, message: `Bill ${billNo}: ${blocked}` });
+    }
+
     const updated = await db.bill.update({
       where: { id: bill.id },
       data: {
@@ -709,10 +802,12 @@ export const deleteBill = async (req, res) => {
       return res.status(404).json({ success: false, message: "Bill not found" });
     }
 
-    if (bill.status === "PAID") {
+    // Only a draft can be deleted. Once sent, a bill is cancelled with a reason
+    // (Super Admin) so its number is never silently lost (G4, G13).
+    if (bill.status !== "PENDING") {
       return res.status(409).json({
         success: false,
-        message: `Bill ${billNo} is PAID and cannot be deleted — cancel it instead`,
+        message: `Bill ${billNo} is ${bill.status} and cannot be deleted — cancel it instead`,
       });
     }
 
@@ -755,12 +850,15 @@ export const uploadTmChallan = async (req, res) => {
       return res.status(400).json({ success: false, message: "No file uploaded" });
     }
 
-    const { error, statusCode, tm } = await resolveBillTm(billNo, tmId);
+    const { error, statusCode, tm, order, orderCode } = await resolveTm(req.params);
     if (error) {
       return res.status(statusCode).json({ success: false, message: error });
     }
+    if (await rejectIfLocked(order, req, res)) return;
 
-    const challanUrl = getChallanPublicUrl(billNo, req.file.filename);
+    const challanUrl = billNo
+      ? getChallanPublicUrl(billNo, req.file.filename)
+      : getOrderChallanPublicUrl(orderCode, req.file.filename);
 
     const updated = await db.tmDetail.update({
       where: { id: tmId },
@@ -769,19 +867,23 @@ export const uploadTmChallan = async (req, res) => {
 
     await createActivityLog({
       title: "Challan uploaded",
-      description: `Challan uploaded for ${tm.tmNumber} (${tm.truckNo}) on bill ${billNo}`,
+      description: `Challan uploaded for ${tm.tmNumber} (${tm.truckNo}) on ${billNo ? `bill ${billNo}` : `order ${orderCode}`}`,
       entityType: "ORDER",
       entityId: tm.orderId,
       action: "UPDATED",
       createdById: Number(req.user?.data?.id) || null,
     });
 
-    logger.info(`Challan uploaded for TM ${tmId} on ${billNo}: ${challanUrl}`);
+    logger.info(`Challan uploaded for TM ${tmId} on ${billNo || orderCode}: ${challanUrl}`);
+
+    const billing = await billIfReady(orderCode, { createdById: Number(req.user?.data?.id) || null });
 
     return res.status(200).json({
       success: true,
       message: "Challan uploaded successfully",
       data: updated,
+      ...(billing.bill && { bill: billing.bill }),
+      ...(billing.pending && { billPending: billing.pending }),
     });
   } catch (error) {
     logger.error("Error uploading challan:", error);
@@ -825,10 +927,11 @@ export const updateTmApproval = async (req, res) => {
       });
     }
 
-    const { error, statusCode, tm } = await resolveBillTm(billNo, tmId);
+    const { error, statusCode, tm, order, orderCode } = await resolveTm(req.params);
     if (error) {
       return res.status(statusCode).json({ success: false, message: error });
     }
+    if (await rejectIfLocked(order, req, res)) return;
 
     logger.info(`Updating TM approval: ${tmId} -> ${approvalStatus}`);
 
@@ -839,6 +942,10 @@ export const updateTmApproval = async (req, res) => {
         rejectionReason:
           approvalStatus === "REJECTED" ? rejectionReason.trim() : null,
         approvedAt: approvalStatus === "ACCEPTED" ? new Date() : null,
+        // W32: staff rejecting (incl. on the client's behalf) is recorded as USER.
+        ...(approvalStatus === "REJECTED"
+          ? { rejectedAt: new Date(), rejectedByType: "USER", rejectedById: String(req.user?.data?.id ?? "") }
+          : { rejectedAt: null, rejectedByType: null, rejectedById: null }),
       },
     });
 
@@ -846,8 +953,8 @@ export const updateTmApproval = async (req, res) => {
       title: `TM ${approvalStatus.toLowerCase()}`,
       description:
         approvalStatus === "REJECTED"
-          ? `${tm.tmNumber} (${tm.truckNo}) rejected on bill ${billNo} — ${rejectionReason.trim()}`
-          : `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus.toLowerCase()} on bill ${billNo}`,
+          ? `${tm.tmNumber} (${tm.truckNo}) rejected on ${billNo || orderCode} — ${rejectionReason.trim()}`
+          : `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus.toLowerCase()} on ${billNo || orderCode}`,
       entityType: "ORDER",
       entityId: tm.orderId,
       action: "STATUS_CHANGED",
@@ -856,10 +963,14 @@ export const updateTmApproval = async (req, res) => {
 
     logger.info(`TM approval updated successfully: ${tmId}`);
 
+    const billing = await billIfReady(orderCode, { createdById: Number(req.user?.data?.id) || null });
+
     return res.status(200).json({
       success: true,
       message: `TM ${approvalStatus.toLowerCase()} successfully`,
       data: updated,
+      ...(billing.bill && { bill: billing.bill }),
+      ...(billing.pending && { billPending: billing.pending }),
     });
   } catch (error) {
     logger.error("Error updating TM approval:", error);

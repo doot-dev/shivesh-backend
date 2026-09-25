@@ -13,6 +13,7 @@ import {
   downloadInvoice,
 } from "../controllers/billController.js";
 import { verifyToken } from "../../../config/jwtConfig.js";
+import { exportRegister } from "../controllers/reportController.js";
 import { uploadSingleBillDoc } from "../../../config/billUploadConfig.js";
 import { uploadSingleChallan } from "../../../config/challanUploadConfig.js";
 import { requirePermission, can } from "../../../helper/accessControl.js";
@@ -28,6 +29,13 @@ router.put("/:billNo/tm/:tmId/approval", verifyToken, requirePermission(can('bil
 // Bill routes
 router.post("/create", verifyToken, requirePermission(can('billing', 'create')), createBill);
 router.get("/list", verifyToken, requirePermission(can('billing', 'view')), getBillList);
+// G16: the billing list's Export = the sales register for the chosen dates.
+router.get("/export", verifyToken, requirePermission(can('reports', 'export')), (req, res) => {
+  req.params.register = "sales";
+  req.query.from = req.query.dateFrom || req.query.from;
+  req.query.to = req.query.dateTo || req.query.to;
+  return exportRegister(req, res);
+});
 // The order detail screen shows a bill summary, so orders.view can read one bill.
 router.get("/order/:orderId", verifyToken, requirePermission(can('billing', 'view'), can('orders', 'view')), getBillByOrder);
 router.put("/status", verifyToken, requirePermission(can('billing', 'update')), updateBillStatus);

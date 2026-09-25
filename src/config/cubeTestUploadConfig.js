@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { pushUploads, removeUpload } from './objectStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,7 +63,7 @@ export const uploadCubeTestFile = multer({
 });
 
 // Middleware for single file upload
-export const uploadSingleCubeTestFile = uploadCubeTestFile.single('file');
+export const uploadSingleCubeTestFile = [uploadCubeTestFile.single('file'), pushUploads];
 
 // Helper function to get public URL for uploaded file
 export function getCubeTestPublicUrl(orderId, filename) {
@@ -72,6 +73,7 @@ export function getCubeTestPublicUrl(orderId, filename) {
 // Helper function to delete uploaded file
 export function deleteCubeTestFile(orderId, filename) {
   try {
+    removeUpload(path.join(baseUploadDir, orderId.toString(), filename));
     const filePath = path.join(baseUploadDir, orderId.toString(), filename);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);

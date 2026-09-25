@@ -1,4 +1,8 @@
 import db from '../../../config/database.js';
+import { getCreditPosition } from '../../../helper/creditPosition.js';
+import { buildInvoicePdf } from '../../../helper/invoicePdf.js';
+import { productByName } from '../../../helper/productUnits.js';
+import { invoiceOrderInclude } from '../../admin/controllers/billController.js';
 import logger from '../../../helper/logger.js';
 import {
   registerDeviceToken,
@@ -148,7 +152,20 @@ export async function getProjectProducts(req, res) {
       orderBy: { productName: 'asc' },
     });
 
-    return res.status(200).json({ success: true, data: products });
+    // W38: each product carries its unit so the app stops assuming "m3".
+    const units = Object.fromEntries(
+      (await db.product.findMany({
+        where: { name: { in: [...new Set(products.map((p) => p.productName))] }, isDeleted: false },
+        select: { name: true, unit: true, isConcrete: true },
+      })).map((p) => [p.name, p]),
+    );
+    const data = products.map((p) => ({
+      ...p,
+      unit: units[p.productName]?.unit ?? 'CBM',
+      isConcrete: units[p.productName]?.isConcrete ?? true,
+    }));
+
+    return res.status(200).json({ success: true, data });
   } catch (error) {
     logger.error('getProjectProducts error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -271,6 +288,68 @@ export async function markNotificationRead(req, res) {
     return res.status(200).json({ success: true, message: 'Notification marked as read' });
   } catch (error) {
     logger.error('markNotificationRead error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+// ─── Client money: credit, bills, invoice (P1.14, P1.16) ─────────────────────
+
+/** GET /client/credit — the client's real credit position (replaces the fake app figures, W17). */
+export async function getCredit(req, res) {
+  try {
+    return res.status(200).json({ success: true, data: await getCreditPosition(req.user.data.id) });
+  } catch (error) {
+    logger.error('getCredit error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+// Drafts (PENDING) are the office's working copy; the client sees issued bills.
+const CLIENT_BILL_STATUSES = ['SENT', 'PAID', 'OVERDUE'];
+
+/** GET /client/bills?projectId= — the client's issued bills (W16). */
+export async function listBills(req, res) {
+  try {
+    const { projectId } = req.query;
+    const bills = await db.bill.findMany({
+      where: {
+        isDeleted: false,
+        status: { in: CLIENT_BILL_STATUSES },
+        order: { clientId: req.user.data.id, isDeleted: false, ...(projectId && { project: { projectId } }) },
+      },
+      orderBy: { issueDate: 'desc' },
+      select: {
+        billNo: true, quantity: true, rate: true, amount: true, status: true, issueDate: true, dueDate: true, paidAt: true,
+        order: { select: { orderId: true, productName: true, productGrade: true, project: { select: { projectId: true, projectName: true, siteName: true } } } },
+      },
+    });
+    const now = new Date();
+    const data = bills.map((b) => ({
+      ...b,
+      daysOverdue: b.status !== 'PAID' && b.dueDate && new Date(b.dueDate) < now ? Math.floor((now - new Date(b.dueDate)) / 864e5) : 0,
+    }));
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.error('listBills error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** GET /client/bills/:billNo/invoice — the invoice PDF, only for the client's own issued bill. */
+export async function downloadBillInvoice(req, res) {
+  try {
+    const bill = await db.bill.findFirst({
+      where: { billNo: req.params.billNo, isDeleted: false, status: { in: CLIENT_BILL_STATUSES }, order: { clientId: req.user.data.id } },
+    });
+    if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
+    const order = await db.order.findFirst({ where: { id: bill.orderId }, include: invoiceOrderInclude() });
+    order.unit = (await productByName(order.productName))?.unit;
+    const pdf = await buildInvoicePdf(bill, order);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${bill.billNo}.pdf"`);
+    return res.send(Buffer.from(pdf));
+  } catch (error) {
+    logger.error('downloadBillInvoice error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }

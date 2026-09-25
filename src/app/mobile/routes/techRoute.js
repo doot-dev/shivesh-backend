@@ -42,6 +42,7 @@ router.put(
   tmController.updateTm,
 );
 router.delete('/orders/:orderId/tm/:tmId', verifyTechToken, tmController.deleteTm);
+router.put('/orders/:orderId/tm/:tmId/reached', verifyTechToken, tmController.markTmReached);
 
 // Cube testing reports.
 //

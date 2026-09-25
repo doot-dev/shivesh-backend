@@ -14,7 +14,7 @@ export const updateOrderValidation = {
 export const updateOrderStatusValidation = {
   orderId: "required|string",
   status: "in:NEW,CONFIRMED,IN_PROGRESS,DELIVERED,COMPLETED,CANCELLED",
-  deliveryStatus: "in:ASSIGNED,IN_TRANSIT,DELIVERED,COMPLETED",
+  deliveryStatus: "in:ASSIGNED,IN_TRANSIT,REACHED,DELIVERED,COMPLETED",
 };
 
 // Order Vendor Validations
@@ -60,7 +60,7 @@ export const createOrderTmValidation = {
   batchStartTime: "string",
   batchEndTime: "string",
   challanNo: "string",
-  status: "in:ASSIGNED,IN_TRANSIT,DELIVERED,COMPLETED",
+  status: "in:ASSIGNED,IN_TRANSIT,REACHED,DELIVERED,COMPLETED",
 };
 
 export const updateOrderTmValidation = {
@@ -73,5 +73,5 @@ export const updateOrderTmValidation = {
   batchStartTime: "string",
   batchEndTime: "string",
   challanNo: "string",
-  status: "in:ASSIGNED,IN_TRANSIT,DELIVERED,COMPLETED",
+  status: "in:ASSIGNED,IN_TRANSIT,REACHED,DELIVERED,COMPLETED",
 };

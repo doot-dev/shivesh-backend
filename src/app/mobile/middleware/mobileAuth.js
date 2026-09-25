@@ -1,5 +1,7 @@
 import { decrypt } from '../../../helper/security.js';
 import jsonwebtoken from 'jsonwebtoken';
+import db from '../../../config/database.js';
+import { requireKyc } from '../controllers/clientAuthController.js';
 const { verify } = jsonwebtoken;
 
 function makeVerifier(requiredType) {
@@ -30,7 +32,26 @@ function makeVerifier(requiredType) {
           return res.status(403).json({ success: false, message: 'Access denied' });
         }
         req.user = decoded;
-        next();
+        if (requiredType !== 'CLIENT' || decoded.data.id === 'dev-client') return next();
+
+        // Tokens last 30 days, so re-check the client on every request: a client
+        // the office deactivates or un-verifies loses access immediately.
+        db.client
+          .findFirst({
+            where: {
+              id: decoded.data.id,
+              isDeleted: false,
+              status: 'ACTIVE',
+              ...(requireKyc() && { kycStatus: 'VERIFIED' }),
+            },
+            select: { id: true },
+          })
+          .then((client) =>
+            client
+              ? next()
+              : res.status(401).json({ success: false, message: 'Account not active or not verified' }),
+          )
+          .catch(next);
       });
     } catch (error) {
       return res.status(401).json({ success: false, message: 'Invalid token' });

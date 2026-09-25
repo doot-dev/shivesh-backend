@@ -14,6 +14,8 @@ const DEV_MOCK_PHONE = '9999999999';
  */
 const FIXED_CLIENT_OTP = '1111';
 
+export const requireKyc = () => process.env.CLIENT_LOGIN_REQUIRES_KYC !== 'false';
+
 // Normalize to 10-digit Indian mobile number regardless of how it's stored
 function normalizePhone(raw) {
   const s = String(raw).replace(/\s+/g, '').replace(/^\+/, '');
@@ -39,6 +41,9 @@ function findActiveClient(input) {
     where: {
       isDeleted: false,
       status: 'ACTIVE',
+      // D16: only clients the office has verified (KYC) may log in. Switchable
+      // so a demo can run before the office has verified the existing clients.
+      ...(requireKyc() && { kycStatus: 'VERIFIED' }),
       OR: [
         ...phoneVariants(input).map((v) => ({ contactNumber: v })),
         { contactNumber: { endsWith: normalized } },

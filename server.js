@@ -3,6 +3,7 @@ import logger from './src/helper/logger.js';
 import { databaseConnection } from './src/config/database.js';
 import { initSocketServer } from './src/realtime/socketServer.js';
 import { startOrderReminderJob, stopOrderReminderJob } from './src/jobs/orderReminderJob.js';
+import { startDailyOpsJob, stopDailyOpsJob } from './src/jobs/dailyOpsJob.js';
 
 const PORT = process.env.PORT || 3001;
 let server; // Declare server variable at module level
@@ -30,11 +31,13 @@ const startServer = async () => {
     // mode every worker would schedule its own sweep and clients would get
     // duplicate reminders.
     startOrderReminderJob();
+    startDailyOpsJob();
 
     // Graceful shutdown
     const gracefulShutdown = async () => {
       logger.info('Shutting down gracefully...');
       stopOrderReminderJob();
+    stopDailyOpsJob();
 
       server.close(async () => {
         try {

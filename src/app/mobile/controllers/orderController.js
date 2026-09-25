@@ -3,6 +3,11 @@ import logger from '../../../helper/logger.js';
 import { sendNotification, notifyAdmins } from '../../../helper/notificationHelper.js';
 import { emitOrderEvent } from '../../../realtime/socketServer.js';
 import { validateDeliveryDate } from '../../../helper/deliveryDateHelper.js';
+import { createActivityLog } from '../../../helper/activityLogger.js';
+import { onOrderCompleted } from '../../../helper/orderCompletion.js';
+import { quantityError, priceListError } from '../../../helper/orderValidation.js';
+import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow.js';
+import { DELIVERY_STEPS, DELIVERY_TO_ORDER_STATUS, deliveryStepBlocked } from '../../../helper/orderStatus.js';
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
 async function assignedTechUserIds(orderDbId) {
@@ -68,10 +73,24 @@ function assignedToTech(userId) {
   return { technicians: { some: { userId, isDeleted: false } } };
 }
 
+/**
+ * The order, only if the caller may see it: a client's own order, or an order
+ * the technician is assigned to. Order codes are sequential, so an unscoped
+ * lookup let any client read or post in any other client's chat.
+ */
+function callerOrderWhere(orderId, user) {
+  const scope = user?.type === 'CLIENT'
+    ? { clientId: user.id }
+    : assignedToTech(user?.id);
+  return { orderId, isDeleted: false, ...scope };
+}
+
 function formatOrder(o) {
   return {
     ...o,
     isActive: orderIsActive(o.status),
+    // W37: apps show "Editable until …" and hide edit buttons after it.
+    editableUntil: o.date || o.createdAt ? orderEditableUntil(o) : null,
   };
 }
 
@@ -236,11 +255,16 @@ export async function clientCreateOrder(req, res) {
 
     // Verify project belongs to this client
     const project = await db.project.findFirst({
-      where: { projectId, clientId: clientDbId, isDeleted: false },
+      where: { projectId, clientId: clientDbId, isDeleted: false, status: 'ACTIVE' },
     });
 
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
+    }
+
+    const lineError = quantityError(quantity) || (await priceListError(project.id, productName, productGrade));
+    if (lineError) {
+      return res.status(400).json({ success: false, message: lineError });
     }
 
     // Generate orderId
@@ -298,6 +322,74 @@ export async function clientCreateOrder(req, res) {
     });
   } catch (error) {
     logger.error('clientCreateOrder error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+// ─── Client: cancel before dispatch (D15, W6) ─────────────────────────────────
+
+/**
+ * The client may cancel directly while the order is NEW or CONFIRMED and no
+ * truck has started batching or been dispatched. After that the concrete is
+ * committed and it is a conversation with the office.
+ */
+export async function clientCancelOrder(req, res) {
+  try {
+    const { orderId } = req.params;
+    const { reason } = req.body;
+    const clientDbId = req.user.data.id;
+
+    if (!reason?.trim()) {
+      return res.status(400).json({ success: false, message: 'reason is required' });
+    }
+
+    const order = await db.order.findFirst({
+      where: { orderId, clientId: clientDbId, isDeleted: false },
+      include: { tmDetails: { where: { isDeleted: false } } },
+    });
+    if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+
+    const dispatched =
+      !['NEW', 'CONFIRMED'].includes(order.status) ||
+      order.deliveryStatus !== 'ASSIGNED' ||
+      order.tmDetails.some((tm) => tm.dispatchTime || tm.batchStartTime || tm.status !== 'ASSIGNED');
+    if (dispatched) {
+      return res.status(409).json({ success: false, message: 'Order already dispatched — please message the office' });
+    }
+
+    await db.order.update({ where: { id: order.id }, data: { status: 'CANCELLED' } });
+    // ponytail: the reason lives in the order chat until 009 adds Order.cancelReason.
+    await db.orderComment.create({
+      data: {
+        orderId: order.id,
+        message: `Order cancelled by client: ${reason.trim()}`,
+        authorType: 'CLIENT',
+        authorId: String(clientDbId),
+        authorName: req.user.data.name || 'Client',
+      },
+    });
+    await notifyAdmins({
+      title: 'Order cancelled by client',
+      message: `${orderId} cancelled by the client: ${reason.trim()}`,
+      type: 'STATUS_UPDATED',
+      relatedId: order.id,
+      orderId: order.id,
+    });
+    const techUserIds = await assignedTechUserIds(order.id);
+    await Promise.all(techUserIds.map((id) => sendNotification({
+      targetType: 'FIELD_TECH',
+      targetId: String(id),
+      title: 'Order cancelled',
+      message: `Order ${orderId} was cancelled by the client`,
+      type: 'STATUS_UPDATED',
+      relatedId: order.id,
+      orderId: order.id,
+    })));
+    emitOrderEvent(orderId, 'order:status', { orderId, status: 'CANCELLED', deliveryStatus: order.deliveryStatus, isActive: false }, { clientDbId, techUserIds });
+
+    return res.status(200).json({ success: true, message: 'Order cancelled' });
+  } catch (error) {
+    logger.error('clientCancelOrder error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }
@@ -386,7 +478,7 @@ export async function techUpdateStatus(req, res) {
     const { deliveryStatus } = req.body;
     const userId = req.user.data.id;
 
-    const validStatuses = ['ASSIGNED', 'IN_TRANSIT', 'DELIVERED', 'COMPLETED'];
+    const validStatuses = DELIVERY_STEPS;
     if (!deliveryStatus || !validStatuses.includes(deliveryStatus)) {
       return res.status(400).json({ success: false, message: 'Invalid deliveryStatus' });
     }
@@ -399,12 +491,16 @@ export async function techUpdateStatus(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    const statusMap = {
-      ASSIGNED: 'CONFIRMED',
-      IN_TRANSIT: 'IN_PROGRESS',
-      DELIVERED: 'DELIVERED',
-      COMPLETED: 'COMPLETED',
-    };
+    if (await rejectIfLocked(order, req, res)) return;
+
+    // W9: forward only, never on a cancelled order, never reopening a completed one.
+    const blocked =
+      deliveryStepBlocked(order.status, order.deliveryStatus, deliveryStatus) ||
+      (order.status === 'COMPLETED' && deliveryStatus !== 'COMPLETED' ? 'the order is already completed' : null);
+    if (blocked) {
+      return res.status(409).json({ success: false, message: `Order ${orderId}: ${blocked}` });
+    }
+    const statusMap = DELIVERY_TO_ORDER_STATUS;
 
     const updated = await db.order.update({
       where: { id: order.id },
@@ -415,6 +511,20 @@ export async function techUpdateStatus(req, res) {
     });
 
     const statusLabel = deliveryStatus.replace('_', ' ');
+
+    await createActivityLog({
+      title: 'Order status updated (field app)',
+      description: `Order ${orderId} moved to ${statusLabel} by ${req.user.data.name || 'a technician'} (was ${order.deliveryStatus})`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      action: 'STATUS_CHANGED',
+      createdById: Number(userId),
+    });
+
+    // Field-app completions used to skip billing entirely (G2).
+    const billing = updated.status === 'COMPLETED' && order.status !== 'COMPLETED'
+      ? await onOrderCompleted(orderId, { createdById: Number(userId) })
+      : null;
 
     // Notify the client
     await sendNotification({
@@ -452,7 +562,13 @@ export async function techUpdateStatus(req, res) {
       },
     );
 
-    return res.status(200).json({ success: true, message: 'Status updated', data: { deliveryStatus: updated.deliveryStatus } });
+    return res.status(200).json({
+      success: true,
+      message: 'Status updated',
+      data: { deliveryStatus: updated.deliveryStatus },
+      ...(billing?.error && { billError: billing.error }),
+      ...(billing?.pending && { billPending: billing.pending }),
+    });
   } catch (error) {
     logger.error('techUpdateStatus error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -465,7 +581,7 @@ export async function listComments(req, res) {
   try {
     const { orderId } = req.params;
 
-    const order = await db.order.findFirst({ where: { orderId, isDeleted: false } });
+    const order = await db.order.findFirst({ where: callerOrderWhere(orderId, req.user.data) });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     const comments = await db.orderComment.findMany({
@@ -492,7 +608,7 @@ export async function addComment(req, res) {
       return res.status(400).json({ success: false, message: 'Message is required' });
     }
 
-    const order = await db.order.findFirst({ where: { orderId, isDeleted: false } });
+    const order = await db.order.findFirst({ where: callerOrderWhere(orderId, req.user.data) });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     const authorType = userData.type; // CLIENT or FIELD_TECH

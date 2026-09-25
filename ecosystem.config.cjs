@@ -8,6 +8,8 @@ module.exports = {
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'development',
+        // Bills, due dates and financial years must follow IST, not the server clock (G3).
+        TZ: 'Asia/Kolkata',
         PORT: 3001,
         LOG_LEVEL: 'debug',
         ENABLE_FILE_LOGGING: 'false'

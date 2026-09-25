@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { pushUploads, removeUpload } from './objectStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,10 +65,10 @@ export const uploadKYC = multer({
 });
 
 // Middleware for multiple file uploads
-export const uploadMultipleKYC = uploadKYC.array('kycDocuments', 10); // Max 10 files
+export const uploadMultipleKYC = [uploadKYC.array('kycDocuments', 10), pushUploads]; // Max 10 files
 
 // Middleware for single file upload
-export const uploadSingleKYC = uploadKYC.single('kycDocument');
+export const uploadSingleKYC = [uploadKYC.single('kycDocument'), pushUploads];
 
 // Helper function to get public URL for uploaded file
 export function getPublicUrl(clientId, filename) {
@@ -77,6 +78,7 @@ export function getPublicUrl(clientId, filename) {
 // Helper function to delete uploaded file
 export async function deleteUploadedFile(clientId, filename) {
   try {
+    removeUpload(path.join(baseUploadDir, clientId.toString(), filename));
     const filePath = path.join(baseUploadDir, clientId.toString(), filename);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);

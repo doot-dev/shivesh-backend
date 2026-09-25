@@ -18,13 +18,15 @@ import { createActivityLog } from "../../../helper/activityLogger.js";
  */
 export const getProjectList = async (req, res) => {
   try {
-    const { page = 1, limit = 10, search = "", status } = req.query;
+    const { page = 1, limit = 10, search = "", status, clientId } = req.query;
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
     const skip = (pageNum - 1) * limitNum;
 
     const where = {
       isDeleted: false,
+      // Client page Projects tab (G19).
+      ...(clientId && { client: { clientId } }),
       ...(search && {
         OR: [
           { projectName: { contains: search, mode: 'insensitive' } },

@@ -97,6 +97,10 @@ model OTP {
 model Product {
   id             Int              @id @default(autoincrement())
   name           String
+  /// CBM, NOS, MT, KG, BAG … (W38). Existing products are RMC → CBM.
+  unit           String           @default("CBM")
+  /// Enables cube tests and the "TM" (transit mixer) wording.
+  isConcrete     Boolean          @default(true)
   isActive       Boolean          @default(true)
   isDeleted      Boolean          @default(false)
   createdAt      DateTime         @default(now())
@@ -467,6 +471,10 @@ model TmDetail {
   approvalStatus  TmApproval     @default(PENDING)
   rejectionReason String?        @db.Text
   approvedAt      DateTime?
+  /// Site rejection (W32): who rejected the truck — CLIENT or USER — and when.
+  rejectedAt      DateTime?
+  rejectedByType  String?
+  rejectedById    String?
   order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
@@ -545,6 +553,7 @@ enum OrderStatus {
 enum DeliveryStatus {
   ASSIGNED
   IN_TRANSIT
+  REACHED
   DELIVERED
   COMPLETED
 }
@@ -552,7 +561,9 @@ enum DeliveryStatus {
 enum CubeTestPeriod {
   SEVEN_DAYS
   FOURTEEN_DAYS
+  FIFTEEN_DAYS
   TWENTYONE_DAYS
+  TWENTYEIGHT_DAYS
   CUSTOM
 }
 

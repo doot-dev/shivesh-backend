@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { pushUploads, removeUpload } from './objectStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,7 +63,7 @@ export const uploadBillDoc = multer({
 });
 
 // Middleware for single file upload
-export const uploadSingleBillDoc = uploadBillDoc.single('document');
+export const uploadSingleBillDoc = [uploadBillDoc.single('document'), pushUploads];
 
 // Helper function to get public URL for uploaded file
 export function getBillDocPublicUrl(billNo, filename) {
@@ -72,6 +73,7 @@ export function getBillDocPublicUrl(billNo, filename) {
 // Helper function to delete uploaded file
 export async function deleteBillDocFile(billNo, filename) {
   try {
+    removeUpload(path.join(baseUploadDir, billNo.toString(), filename));
     const filePath = path.join(baseUploadDir, billNo.toString(), filename);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);

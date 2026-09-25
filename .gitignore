@@ -111,3 +111,5 @@ temp/
 
 # Uploads
 uploads/
+# Local secrets (MinIO keys etc.) — never commit
+.env.local

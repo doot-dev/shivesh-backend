@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { pushUploads, removeUpload } from './objectStorage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,7 +63,7 @@ export const uploadChallan = multer({
 });
 
 // Middleware for single file upload
-export const uploadSingleChallan = uploadChallan.single('challan');
+export const uploadSingleChallan = [uploadChallan.single('challan'), pushUploads];
 
 // Helper function to get public URL for uploaded file
 export function getChallanPublicUrl(billNo, filename) {
@@ -72,6 +73,7 @@ export function getChallanPublicUrl(billNo, filename) {
 // Helper function to delete uploaded file
 export async function deleteChallanFile(billNo, filename) {
   try {
+    removeUpload(path.join(baseUploadDir, billNo.toString(), filename));
     const filePath = path.join(baseUploadDir, billNo.toString(), filename);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -132,7 +134,7 @@ export const uploadOrderChallan = multer({
  * Mount it AFTER verifyTechToken: multer streams the upload to disk while
  * parsing, so putting it first would let an unauthenticated caller write files.
  */
-export const uploadSingleOrderChallan = uploadOrderChallan.single('challan');
+export const uploadSingleOrderChallan = [uploadOrderChallan.single('challan'), pushUploads];
 
 export function getOrderChallanPublicUrl(orderId, filename) {
   return `/uploads/challans/orders/${orderId}/${filename}`;
