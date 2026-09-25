@@ -14,6 +14,7 @@ import {
 } from "../controllers/billController.js";
 import { verifyToken } from "../../../config/jwtConfig.js";
 import { exportRegister } from "../controllers/reportController.js";
+import { billingLog } from "../controllers/paymentController.js";
 import { uploadSingleBillDoc } from "../../../config/billUploadConfig.js";
 import { uploadSingleChallan } from "../../../config/challanUploadConfig.js";
 import { requirePermission, can } from "../../../helper/accessControl.js";
@@ -29,6 +30,8 @@ router.put("/:billNo/tm/:tmId/approval", verifyToken, requirePermission(can('bil
 // Bill routes
 router.post("/create", verifyToken, requirePermission(can('billing', 'create')), createBill);
 router.get("/list", verifyToken, requirePermission(can('billing', 'view')), getBillList);
+// W33: Billing → Log tab.
+router.get("/log", verifyToken, requirePermission(can('billing', 'view')), billingLog);
 // G16: the billing list's Export = the sales register for the chosen dates.
 router.get("/export", verifyToken, requirePermission(can('reports', 'export')), (req, res) => {
   req.params.register = "sales";

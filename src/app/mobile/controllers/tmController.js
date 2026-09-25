@@ -23,7 +23,7 @@ import { getOrderChallanPublicUrl } from '../../../config/challanUploadConfig.js
 export async function createTm(req, res) {
   try {
     const { orderId } = req.params;
-    const { truckNo, qty, batchStartTime, batchEndTime, challanNo, challanUrl } = req.body;
+    const { truckNo, qty, batchStartTime, batchEndTime, challanNo, challanUrl, dispatchTime, arrivalTime } = req.body;
     const userId = req.user.data.id;
 
     if (!truckNo || !qty || !batchStartTime || !batchEndTime || !challanNo) {
@@ -62,8 +62,11 @@ export async function createTm(req, res) {
         batchStartTime,
         batchEndTime,
         challanNo,
+        dispatchTime: dispatchTime || null,
+        arrivalTime: arrivalTime || null,
         challanUrl: uploadedChallanUrl || challanUrl || null,
         status: uploadedChallanUrl || challanUrl ? 'DELIVERED' : 'ASSIGNED',
+        ...((uploadedChallanUrl || challanUrl) && { deliveredAt: new Date() }),
       },
     });
 
@@ -105,7 +108,7 @@ export async function createTm(req, res) {
 export async function updateTm(req, res) {
   try {
     const { orderId, tmId } = req.params;
-    const { truckNo, qty, batchStartTime, batchEndTime, challanNo, challanUrl, status } = req.body;
+    const { truckNo, qty, batchStartTime, batchEndTime, challanNo, challanUrl, status, dispatchTime, arrivalTime } = req.body;
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
@@ -144,12 +147,15 @@ export async function updateTm(req, res) {
         ...(batchStartTime && { batchStartTime }),
         ...(batchEndTime && { batchEndTime }),
         ...(challanNo && { challanNo }),
+        ...(dispatchTime && { dispatchTime }),
+        ...(arrivalTime && { arrivalTime }),
         ...(uploadedChallanUrl
           ? { challanUrl: uploadedChallanUrl }
           : challanUrl !== undefined && { challanUrl }),
         ...(status && { status }),
         // A challan photo means the truck was poured.
         ...(!status && uploadedChallanUrl && ['ASSIGNED', 'IN_TRANSIT', 'REACHED'].includes(tm.status) && { status: 'DELIVERED' }),
+        ...(uploadedChallanUrl && !tm.deliveredAt && { deliveredAt: new Date() }),
       },
     });
 

@@ -16,6 +16,7 @@ import { onOrderCompleted } from "../../../helper/orderCompletion.js";
 import { orderStatusBlocked } from "../../../helper/orderStatus.js";
 import { rejectIfLocked, orderEditableUntil } from "../../../helper/updateWindow.js";
 import { quantityError, priceListError } from "../../../helper/orderValidation.js";
+import { bookingSnapshot, creditGate } from "../../../helper/orderBooking.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
 import {
@@ -47,6 +48,8 @@ function buildTmData(tm, tmNumber) {
     batchEndTime: tm.batchEndTime || null,
     challanNo: tm.challanNo || null,
     status: tm.status || "ASSIGNED",
+    // W13: which plant sent this truck (optional).
+    ...(tm.vendorLocationId && { vendorLocationId: parseInt(tm.vendorLocationId) }),
   };
 }
 
@@ -433,6 +436,10 @@ export async function createOrder(req, res) {
     }
     const orderId = `ORD-${currentYear}-${String(seq).padStart(4, "0")}`;
 
+    // W2/W38 freeze rate + unit; W23 credit gate (hold for approval, D12).
+    const snap = await bookingSnapshot(project.id, productName, productGrade);
+    const gate = await creditGate(client.id, (parseFloat(quantity) || 0) * (snap.rate || 0));
+
     const order = await db.order.create({
       data: {
         orderId,
@@ -441,6 +448,9 @@ export async function createOrder(req, res) {
         productName,
         productGrade,
         quantity,
+        ...snap,
+        creditHold: gate.hold,
+        creditHoldReason: gate.reason,
         deliveryAddress: deliveryAddress || null,
         date: date || null,
         time: time || null,
@@ -492,9 +502,19 @@ export async function createOrder(req, res) {
       createdById: Number(req.user?.data?.id) || null,
     });
 
+    if (gate.hold) {
+      await notifyAdmins({
+        title: "Order on credit hold",
+        message: `${orderId} is on credit hold — ${gate.reason}. Release or cancel it.`,
+        type: "CREDIT_HOLD",
+        relatedId: order.id,
+        orderId: order.id,
+      });
+    }
+
     return res
       .status(201)
-      .json({ success: true, message: "Order created", data: order });
+      .json({ success: true, message: gate.hold ? "Order created — on credit hold" : "Order created", data: order });
   } catch (error) {
     console.log("createOrder error:", error);
     logger.error("admin createOrder error:", error);
@@ -647,6 +667,14 @@ export async function updateOrderStatus(req, res) {
 
     if (await rejectIfLocked(order, req, res)) return;
 
+    if (order.creditHold && status && status !== "CANCELLED" && status !== order.status) {
+      return res.status(409).json({ success: false, message: `Order ${orderId} is on credit hold — release it first` });
+    }
+    const { cancelReason } = req.body;
+    if (status === "CANCELLED" && order.status !== "CANCELLED" && !cancelReason?.trim()) {
+      return res.status(400).json({ success: false, message: "A cancel reason is required" });
+    }
+
     // W9: one transition table for every status change.
     const blocked =
       orderStatusBlocked(order.status, status) ||
@@ -660,6 +688,7 @@ export async function updateOrderStatus(req, res) {
       data: {
         ...(status && { status }),
         ...(deliveryStatus && { deliveryStatus }),
+        ...(status === "CANCELLED" && cancelReason?.trim() && { cancelReason: cancelReason.trim() }),
       },
       include: buildInclude(),
     });
@@ -714,6 +743,15 @@ export async function updateOrderStatus(req, res) {
       createdById: Number(req.user?.data?.id) || null,
     });
 
+    // W10/G14: cancelling an order cancels its draft bill (a sent bill needs a credit note).
+    if (status === "CANCELLED" && order.status !== "CANCELLED") {
+      const draft = await db.bill.findFirst({ where: { orderId: order.id, isDeleted: false, status: "PENDING" } });
+      if (draft) {
+        await db.bill.update({ where: { id: draft.id }, data: { status: "CANCELLED" } });
+        await createActivityLog({ title: "Bill cancelled with order", description: `${draft.billNo} cancelled because ${orderId} was cancelled — ${cancelReason?.trim()}`, entityType: "ORDER", entityId: order.id, action: "STATUS_CHANGED", createdById: Number(req.user?.data?.id) || null, event: "BILL_CANCELLED", billId: draft.id, orderRef: orderId });
+      }
+    }
+
     // Completing an order bills it. Billing runs after the status is committed
     // and never fails the request: the order really is COMPLETED either way, so
     // a missing price is reported as a warning to be fixed and retried through
@@ -761,10 +799,16 @@ export async function deleteOrder(req, res) {
         .status(404)
         .json({ success: false, message: "Order not found" });
 
+    const bill = await db.bill.findFirst({ where: { orderId: order.id, isDeleted: false } });
+    if (bill) {
+      return res.status(409).json({ success: false, message: `Order has bill ${bill.billNo} — cancel the order instead of deleting it` });
+    }
+
     await db.order.update({
       where: { id: order.id },
       data: { isDeleted: true },
     });
+    await createActivityLog({ title: "Order deleted", description: `Order ${orderId} deleted`, entityType: "ORDER", entityId: order.id, action: "UPDATED", createdById: Number(req.user?.data?.id) || null, event: "ORDER_DELETED", orderRef: orderId });
 
     return res.status(200).json({ success: true, message: "Order deleted" });
   } catch (error) {
@@ -1749,5 +1793,52 @@ export async function listFieldTechs(req, res) {
     return res
       .status(500)
       .json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+// ─── Credit hold: release / release + extra credit / cancel (W23, D12) ───────
+
+/**
+ * POST /orders/:orderId/credit-release  (orders.approve)
+ * body: { action: 'RELEASE' | 'RELEASE_WITH_EXTRA' | 'CANCEL', note, extraAmount? }
+ */
+export async function releaseCreditHold(req, res) {
+  try {
+    const { orderId } = req.params;
+    const { action, note, extraAmount } = req.body;
+    const userId = Number(req.user?.data?.id);
+    if (!["RELEASE", "RELEASE_WITH_EXTRA", "CANCEL"].includes(action)) {
+      return res.status(400).json({ success: false, message: "action must be RELEASE, RELEASE_WITH_EXTRA or CANCEL" });
+    }
+    if (!note?.trim()) return res.status(400).json({ success: false, message: "A note is required" });
+    const order = await db.order.findFirst({ where: { orderId, isDeleted: false } });
+    if (!order) return res.status(404).json({ success: false, message: "Order not found" });
+    if (!order.creditHold) return res.status(409).json({ success: false, message: "Order is not on credit hold" });
+
+    if (action === "RELEASE_WITH_EXTRA") {
+      const amt = Math.round(Number(extraAmount) * 100) / 100;
+      if (!(amt > 0)) return res.status(400).json({ success: false, message: "extraAmount must be more than 0" });
+      await db.clientCreditExtra.create({ data: { clientId: order.clientId, amount: amt, reason: `Released ${orderId}: ${note.trim()}`, grantedById: userId } });
+      await createActivityLog({ title: "Extra credit granted", description: `₹${amt} extra credit while releasing ${orderId} — ${note.trim()}`, entityType: "ORDER", entityId: order.id, action: "CREATED", createdById: userId, event: "EXTRA_CREDIT_GRANTED", orderRef: orderId });
+    }
+
+    const data = action === "CANCEL"
+      ? { creditHold: false, status: "CANCELLED", cancelReason: `Credit hold: ${note.trim()}`, creditReleasedAt: new Date(), creditReleasedById: userId, creditReleaseNote: note.trim() }
+      : { creditHold: false, creditReleasedAt: new Date(), creditReleasedById: userId, creditReleaseNote: note.trim() };
+    await db.order.update({ where: { id: order.id }, data });
+    await createActivityLog({ title: action === "CANCEL" ? "Credit hold — order cancelled" : "Credit hold released", description: `${orderId}: ${note.trim()} (was: ${order.creditHoldReason})`, entityType: "ORDER", entityId: order.id, action: "STATUS_CHANGED", createdById: userId, event: action === "CANCEL" ? "CREDIT_HOLD_CANCELLED" : "CREDIT_HOLD_RELEASED", orderRef: orderId, before: { creditHold: true, reason: order.creditHoldReason } });
+    await sendNotification({
+      targetType: "CLIENT",
+      targetId: order.clientId,
+      title: action === "CANCEL" ? "Order cancelled" : "Order approved",
+      message: action === "CANCEL" ? `Your order ${orderId} was cancelled after credit review` : `Your order ${orderId} has been approved and will be confirmed shortly`,
+      type: "STATUS_UPDATED",
+      relatedId: order.id,
+      orderId: order.id,
+    });
+    return res.status(200).json({ success: true, message: action === "CANCEL" ? "Order cancelled" : "Credit hold released" });
+  } catch (error) {
+    logger.error("releaseCreditHold error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }

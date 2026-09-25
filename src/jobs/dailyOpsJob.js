@@ -3,6 +3,7 @@ import logger from '../helper/logger.js';
 import { sendNotification, notifyAdmins, ADMIN_TARGET_ID } from '../helper/notificationHelper.js';
 import { todayIso } from '../helper/deliveryDateHelper.js';
 import { billBlocker } from '../helper/orderCompletion.js';
+import { getCreditPosition } from '../helper/creditPosition.js';
 
 /**
  * One daily sweep for field follow-ups (W36, W12/P1.7):
@@ -66,6 +67,32 @@ export async function runDailyOpsSweep(now = new Date()) {
     }
     if (now - new Date(o.updatedAt) > 3 * DAY) {
       sent += await sendOnce({ targetType: 'ADMIN', targetId: ADMIN_TARGET_ID }, `${o.id}:challans:${today}`, 'Order awaiting challans', `${o.orderId} completed but unbilled for 3+ days — ${blocker}`, o.id);
+    }
+  }
+
+  // 4. P2.11 payment reminders: 3 days before due, on due, 7/15/30 days overdue.
+  const openBills = await db.bill.findMany({
+    where: { isDeleted: false, status: { in: ['PENDING', 'SENT', 'OVERDUE', 'PARTIALLY_PAID'] }, NOT: { dueDate: null }, order: { isDeleted: false } },
+    include: { order: { select: { id: true, orderId: true, clientId: true } }, allocations: { where: { isReversed: false }, select: { amount: true } } },
+  });
+  for (const b of openBills) {
+    const balance = b.amount - b.allocations.reduce((s, a) => s + a.amount, 0);
+    if (balance <= 0.005) continue;
+    const d = Math.floor((startToday - new Date(new Date(b.dueDate).setHours(0, 0, 0, 0))) / DAY); // + = days overdue
+    const stage = d === -3 ? 'before-3' : d === 0 ? 'due' : [7, 15, 30].includes(d) ? `overdue-${d}` : null;
+    if (!stage) continue;
+    const amt = `₹${Math.round(balance).toLocaleString('en-IN')}`;
+    const msg = d < 0 ? `Bill ${b.billNo} (${amt}) is due in 3 days` : d === 0 ? `Bill ${b.billNo} (${amt}) is due today` : `Bill ${b.billNo} (${amt}) is ${d} days overdue`;
+    sent += await sendOnce({ targetType: 'CLIENT', targetId: b.order.clientId }, `${b.id}:${stage}`, d > 0 ? 'Payment overdue' : 'Payment due', msg, b.order.id);
+    if (d >= 7) sent += await sendOnce({ targetType: 'ADMIN', targetId: ADMIN_TARGET_ID }, `${b.id}:${stage}`, 'Payment overdue', msg, b.order.id);
+  }
+
+  // 5. 80% of the credit limit (W25), once per client per day.
+  const clients = await db.client.findMany({ where: { isDeleted: false, creditLimit: { gt: 0 } }, select: { id: true } });
+  for (const c of clients) {
+    const pos = await getCreditPosition(c.id, now);
+    if (pos.used >= 0.8 * (pos.limit + pos.extra) && pos.used < pos.limit + pos.extra) {
+      sent += await sendOnce({ targetType: 'CLIENT', targetId: c.id }, `${c.id}:credit80:${today}`, 'Credit almost used', `You have used ${Math.round((pos.used / (pos.limit + pos.extra)) * 100)}% of your credit. Available: ₹${Math.round(pos.available).toLocaleString('en-IN')}`, null);
     }
   }
 

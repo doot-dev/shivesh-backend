@@ -216,35 +216,134 @@ model Activity {
   entityType  EntityType
   entityId    String
   action      ActivityAction
-  createdById Int
+  /// The panel/field USER who acted. Null for a client or system action —
+  /// see actorType/actorId (W31/W33).
+  createdById Int?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
-  createdBy   User           @relation("UserActivities", fields: [createdById], references: [id])
+  createdBy   User?          @relation("UserActivities", fields: [createdById], references: [id])
+  /// W33 audit fields: a named event (BILL_GENERATED, PAYMENT_RECORDED …),
+  /// who acted (USER | CLIENT | SYSTEM), direct links, before/after values.
+  event       String?
+  actorType   String?
+  actorId     String?
+  source      String?
+  billId      String?
+  paymentId   String?
+  orderRef    String?
+  clientRef   String?
+  before      Json?
+  after       Json?
 
   @@index([entityType, entityId])
+  @@index([billId])
+  @@index([paymentId])
+  @@index([clientRef])
+  @@index([event])
   @@index([createdById], map: "Activity_createdById_fkey")
 }
 
 model Client {
-  id            String        @id @default(cuid())
-  clientId      String        @unique
+  id            String              @id @default(cuid())
+  clientId      String              @unique
   companyName   String
   ownerName     String
   contactNumber String
-  email         String        @unique
-  hasGST        Boolean       @default(false)
-  gstNumber     String?       @unique
+  email         String              @unique
+  hasGST        Boolean             @default(false)
+  gstNumber     String?             @unique
   ownerPan      String?
   ownerAadhaar  String?
-  address       String        @db.Text
-  status        ClientStatus  @default(ACTIVE)
-  kycStatus     KYCStatus     @default(PENDING)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
-  isDeleted     Boolean       @default(false)
+  address       String              @db.Text
+  status        ClientStatus        @default(ACTIVE)
+  kycStatus     KYCStatus           @default(PENDING)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  isDeleted     Boolean             @default(false)
   kycDocuments  KYCDocument[]
   orders        Order[]
   projects      Project[]
+  /// D10: credit is per client — ₹N limit and M days (P2.1).
+  creditLimit   Float?
+  creditDays    Int?
+  creditExtras  ClientCreditExtra[]
+  payments      Payment[]
+}
+
+/// W35: one-time extra credit on top of N. No end date (D20); drawn only above
+/// N and gone once used — computed by applyExtraCredit, never stored.
+model ClientCreditExtra {
+  id            String            @id @default(cuid())
+  clientId      String
+  amount        Float
+  reason        String            @db.Text
+  status        CreditExtraStatus @default(ACTIVE)
+  grantedById   Int
+  createdAt     DateTime          @default(now())
+  revokedById   Int?
+  revokedAt     DateTime?
+  /// The unused part removed by a revoke.
+  revokedAmount Float?
+  revokeReason  String?           @db.Text
+  client        Client            @relation(fields: [clientId], references: [id])
+
+  @@index([clientId])
+}
+
+/// W21 / docs/workflow-crosscheck/07-payments-allocation.md. Money is Float,
+/// rounded to 2 dp on write. ponytail: DECIMAL conversion is Phase 3 (with GST/Tally).
+model Payment {
+  id             String              @id @default(cuid())
+  receiptNo      String              @unique
+  clientId       String
+  scope          PaymentScope
+  projectId      String?
+  receivedOn     DateTime
+  amount         Float
+  mode           PaymentMode
+  /// Cheque no. / UTR / transaction id (required for CHEQUE, ONLINE, BANK_TRANSFER).
+  reference      String
+  bankName       String?
+  chequeDate     DateTime?
+  tdsAmount      Float?
+  notes          String?             @db.Text
+  status         PaymentStatus       @default(ACTIVE)
+  reversedAt     DateTime?
+  reversedById   Int?
+  reversalReason String?             @db.Text
+  createdById    Int
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  client         Client              @relation(fields: [clientId], references: [id])
+  allocations    PaymentAllocation[]
+
+  @@index([clientId])
+  @@index([receivedOn])
+}
+
+model PaymentAllocation {
+  id          String   @id @default(cuid())
+  paymentId   String
+  billId      String
+  amount      Float
+  isReversed  Boolean  @default(false)
+  createdById Int
+  createdAt   DateTime @default(now())
+  payment     Payment  @relation(fields: [paymentId], references: [id])
+  bill        Bill     @relation(fields: [billId], references: [id])
+
+  @@index([paymentId])
+  @@index([billId])
+}
+
+/// Locked number series (receipts now; FY invoice series in Phase 3). One row
+/// per series per financial year, incremented inside a transaction (G3/G20).
+model InvoiceCounter {
+  series String
+  fy     String
+  next   Int    @default(1)
+
+  @@id([series, fy])
 }
 
 model KYCDocument {
@@ -352,30 +451,43 @@ model ProjectProductVendor {
 }
 
 model Order {
-  id              String            @id @default(cuid())
-  orderId         String            @unique
-  projectId       String
-  clientId        String
-  productName     String
-  productGrade    String
-  quantity        String
-  deliveryAddress String?           @db.Text
-  date            String?
-  time            String?
-  status          OrderStatus       @default(NEW)
-  deliveryStatus  DeliveryStatus    @default(ASSIGNED)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  isDeleted       Boolean           @default(false)
-  bill            Bill?
-  notifications   Notification[]
-  client          Client            @relation(fields: [clientId], references: [id])
-  project         Project           @relation(fields: [projectId], references: [id])
-  comments        OrderComment[]
-  technicians     OrderTechnician[]
-  vendors         OrderVendor[]
-  tmDetails       TmDetail[]
-  cubeTests       CubeTest[]
+  id                 String            @id @default(cuid())
+  orderId            String            @unique
+  projectId          String
+  clientId           String
+  productName        String
+  productGrade       String
+  quantity           String
+  deliveryAddress    String?           @db.Text
+  date               String?
+  time               String?
+  status             OrderStatus       @default(NEW)
+  deliveryStatus     DeliveryStatus    @default(ASSIGNED)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  isDeleted          Boolean           @default(false)
+  /// W2: rate agreed at booking (and the plant's), frozen on the order.
+  rate               Float?
+  vendorRate         Float?
+  /// W38: product unit copied at booking.
+  unit               String?
+  /// W23 / D12: held for credit approval.
+  creditHold         Boolean           @default(false)
+  creditHoldReason   String?           @db.Text
+  creditReleasedAt   DateTime?
+  creditReleasedById Int?
+  creditReleaseNote  String?           @db.Text
+  /// W10: why the order was cancelled.
+  cancelReason       String?           @db.Text
+  bill               Bill?
+  notifications      Notification[]
+  client             Client            @relation(fields: [clientId], references: [id])
+  project            Project           @relation(fields: [projectId], references: [id])
+  comments           OrderComment[]
+  technicians        OrderTechnician[]
+  vendors            OrderVendor[]
+  tmDetails          TmDetail[]
+  cubeTests          CubeTest[]
 
   @@index([projectId])
   @@index([clientId])
@@ -399,21 +511,22 @@ model CubeTest {
 }
 
 model Bill {
-  id          String     @id @default(cuid())
-  billNo      String     @unique
-  orderId     String     @unique
+  id          String              @id @default(cuid())
+  billNo      String              @unique
+  orderId     String              @unique
   quantity    Float
   rate        Float
   amount      Float
-  status      BillStatus @default(PENDING)
+  status      BillStatus          @default(PENDING)
   documentUrl String?
   issueDate   DateTime?
   dueDate     DateTime?
   paidAt      DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  isDeleted   Boolean    @default(false)
-  order       Order      @relation(fields: [orderId], references: [id])
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  isDeleted   Boolean             @default(false)
+  order       Order               @relation(fields: [orderId], references: [id])
+  allocations PaymentAllocation[]
 
   @@index([orderId])
 }
@@ -453,29 +566,32 @@ model OrderTechnician {
 }
 
 model TmDetail {
-  id              String         @id @default(cuid())
-  orderId         String
-  tmNumber        String
-  truckNo         String
-  qty             String
-  dispatchTime    String?
-  arrivalTime     String?
-  batchStartTime  String?
-  batchEndTime    String?
-  challanNo       String?
-  challanUrl      String?
-  status          DeliveryStatus @default(ASSIGNED)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  isDeleted       Boolean        @default(false)
-  approvalStatus  TmApproval     @default(PENDING)
-  rejectionReason String?        @db.Text
-  approvedAt      DateTime?
+  id               String         @id @default(cuid())
+  orderId          String
+  tmNumber         String
+  truckNo          String
+  qty              String
+  dispatchTime     String?
+  arrivalTime      String?
+  batchStartTime   String?
+  batchEndTime     String?
+  challanNo        String?
+  challanUrl       String?
+  status           DeliveryStatus @default(ASSIGNED)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  isDeleted        Boolean        @default(false)
+  approvalStatus   TmApproval     @default(PENDING)
+  rejectionReason  String?        @db.Text
+  approvedAt       DateTime?
   /// Site rejection (W32): who rejected the truck — CLIENT or USER — and when.
-  rejectedAt      DateTime?
-  rejectedByType  String?
-  rejectedById    String?
-  order           Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  rejectedAt       DateTime?
+  rejectedByType   String?
+  rejectedById     String?
+  /// W13: when the truck was poured (set with the challan), and which plant.
+  deliveredAt      DateTime?
+  vendorLocationId Int?
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderId])
 }
@@ -576,6 +692,7 @@ enum TmApproval {
 enum BillStatus {
   PENDING
   SENT
+  PARTIALLY_PAID
   PAID
   OVERDUE
   CANCELLED
@@ -596,7 +713,33 @@ enum Source {
   SOCIAL_MEDIA
 }
 
+enum PaymentScope {
+  CLIENT
+  PROJECT
+  BILLS
+}
+
+enum PaymentMode {
+  CHEQUE
+  ONLINE
+  BANK_TRANSFER
+  CASH
+  OTHER
+}
+
+enum PaymentStatus {
+  ACTIVE
+  REVERSED
+}
+
+enum CreditExtraStatus {
+  ACTIVE
+  REVOKED
+}
+
 enum EntityType {
+  BILL
+  PAYMENT
   LEAD
   POST
   PROJECT

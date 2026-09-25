@@ -1,4 +1,5 @@
 import { Router } from "express"
+import paymentRoute from './paymentRoute.js';
 import userRoute from "./userRoute.js"
 import tokenRoute from "./tokenRoute.js"
 import authRoute from "./authRoute.js"
@@ -28,6 +29,7 @@ router.use('/client', clientRoute)
 router.use('/project', projectRoute)
 router.use('/orders', orderRoute)
 router.use('/bills', billRoute)
+router.use('/payments', paymentRoute)
 router.use('/dashboard', dashboardRoute)
 router.use('/notifications', notificationRoute)
 router.use('/reports', reportRoute)

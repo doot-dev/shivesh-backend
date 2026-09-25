@@ -6,6 +6,7 @@ import { validateDeliveryDate } from '../../../helper/deliveryDateHelper.js';
 import { createActivityLog } from '../../../helper/activityLogger.js';
 import { onOrderCompleted } from '../../../helper/orderCompletion.js';
 import { quantityError, priceListError } from '../../../helper/orderValidation.js';
+import { bookingSnapshot, creditGate } from '../../../helper/orderBooking.js';
 import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow.js';
 import { DELIVERY_STEPS, DELIVERY_TO_ORDER_STATUS, deliveryStepBlocked } from '../../../helper/orderStatus.js';
 
@@ -281,6 +282,10 @@ export async function clientCreateOrder(req, res) {
     }
     const orderId = `ORD-${currentYear}-${String(seq).padStart(4, '0')}`;
 
+    // W2/W38 freeze rate + unit; W23 credit gate (hold for approval, D12).
+    const snap = await bookingSnapshot(project.id, productName, productGrade);
+    const gate = await creditGate(clientDbId, (parseFloat(quantity) || 0) * (snap.rate || 0));
+
     const order = await db.order.create({
       data: {
         orderId,
@@ -289,6 +294,9 @@ export async function clientCreateOrder(req, res) {
         productName,
         productGrade,
         quantity,
+        ...snap,
+        creditHold: gate.hold,
+        creditHoldReason: gate.reason,
         date: date || null,
         time: time || null,
         deliveryAddress: deliveryAddress || null,
@@ -296,6 +304,25 @@ export async function clientCreateOrder(req, res) {
         deliveryStatus: 'ASSIGNED',
       },
     });
+
+    if (gate.hold) {
+      await notifyAdmins({
+        title: 'Order on credit hold',
+        message: `${orderId} is on credit hold — ${gate.reason}. Release or cancel it.`,
+        type: 'CREDIT_HOLD',
+        relatedId: order.id,
+        orderId: order.id,
+      });
+      await sendNotification({
+        targetType: 'CLIENT',
+        targetId: clientDbId,
+        title: 'Order awaiting credit approval',
+        message: `Your order ${orderId} is waiting for credit approval from the office.`,
+        type: 'CREDIT_HOLD',
+        relatedId: order.id,
+        orderId: order.id,
+      });
+    }
 
     // Notify the admin panel's bell (live over the WebSocket).
     await notifyAdmins({
@@ -318,7 +345,7 @@ export async function clientCreateOrder(req, res) {
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      data: { orderId: order.orderId, id: order.id },
+      data: { orderId: order.orderId, id: order.id, creditHold: gate.hold, creditHoldReason: gate.reason },
     });
   } catch (error) {
     logger.error('clientCreateOrder error:', error);
@@ -357,8 +384,7 @@ export async function clientCancelOrder(req, res) {
       return res.status(409).json({ success: false, message: 'Order already dispatched — please message the office' });
     }
 
-    await db.order.update({ where: { id: order.id }, data: { status: 'CANCELLED' } });
-    // ponytail: the reason lives in the order chat until 009 adds Order.cancelReason.
+    await db.order.update({ where: { id: order.id }, data: { status: 'CANCELLED', cancelReason: `Client: ${reason.trim()}` } });
     await db.orderComment.create({
       data: {
         orderId: order.id,
@@ -499,6 +525,9 @@ export async function techUpdateStatus(req, res) {
       (order.status === 'COMPLETED' && deliveryStatus !== 'COMPLETED' ? 'the order is already completed' : null);
     if (blocked) {
       return res.status(409).json({ success: false, message: `Order ${orderId}: ${blocked}` });
+    }
+    if (order.creditHold) {
+      return res.status(409).json({ success: false, message: `Order ${orderId} is on credit hold — wait for the office to release it` });
     }
     const statusMap = DELIVERY_TO_ORDER_STATUS;
 

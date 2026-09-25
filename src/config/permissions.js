@@ -122,6 +122,14 @@ export const MODULES = [
     actions: [...CRUD, ACTIONS.APPROVE],
   },
   {
+    // W21: recording money is separate from billing; `delete` = reverse a payment.
+    key: 'payments',
+    label: 'Payments',
+    path: null,
+    description: 'Record client payments (cheque / UTR) and reverse them.',
+    actions: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.DELETE],
+  },
+  {
     key: 'reports',
     label: 'Reports',
     path: '/reports',

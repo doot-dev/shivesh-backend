@@ -210,6 +210,16 @@ async function buildBillPayload(bill, order) {
       rejectedByType: tm.rejectedByType,
       rejectedAt: tm.rejectedAt,
     })),
+    // W21: payments received against this bill, and what is still pending.
+    payments: await (async () => {
+      const allocs = await db.paymentAllocation.findMany({
+        where: { billId: bill.id, isReversed: false },
+        orderBy: { createdAt: "asc" },
+        include: { payment: { select: { id: true, receiptNo: true, receivedOn: true, mode: true, reference: true } } },
+      });
+      const paid = Math.round(allocs.reduce((s, a) => s + a.amount, 0) * 100) / 100;
+      return { paid, pending: Math.round((bill.amount - paid) * 100) / 100, rows: allocs.map((a) => ({ ...a.payment, amount: a.amount })) };
+    })(),
     // P1.13 / G10: ordered vs delivered vs accepted vs billed, side by side.
     quantities: (() => {
       const q = (v) => { const n = parseFloat(String(v ?? "")); return Number.isFinite(n) ? n : 0; };
@@ -282,7 +292,8 @@ export async function generateBillForOrder(
     return { error: qtyError, statusCode: 400 };
   }
 
-  const { error: rateError, rate } = await resolveRate(order, overrideRate);
+  // W2: the rate frozen on the order at booking wins over today's price list.
+  const { error: rateError, rate } = await resolveRate(order, overrideRate ?? order.rate ?? undefined);
   if (rateError) {
     return { error: rateError, statusCode: 400 };
   }
@@ -309,11 +320,16 @@ export async function generateBillForOrder(
       amount: quantity * rate,
       status: "PENDING",
       issueDate: new Date(),
-      dueDate: dueDate ? new Date(dueDate) : null,
+      // P2.7 / D11: due = bill date + the client's credit days (M), unless given.
+      dueDate: dueDate ? new Date(dueDate) : await defaultDueDate(order.clientId),
     },
   });
 
   await createActivityLog({
+    event: "BILL_GENERATED",
+    billId: bill.id,
+    orderRef: orderId,
+    after: { billNo, quantity, rate, amount: bill.amount, dueDate: bill.dueDate },
     title: "Bill generated",
     description: `Bill ${billNo} generated for order ${orderId} — ${quantity} × ${rate} = ${bill.amount}`,
     entityType: "ORDER",
@@ -325,6 +341,15 @@ export async function generateBillForOrder(
   logger.info(`Bill generated successfully: ${billNo}`);
 
   return { bill, order };
+}
+
+/** issue date + client credit days (null when the client has no credit period). */
+async function defaultDueDate(clientDbId) {
+  const client = await db.client.findUnique({ where: { id: clientDbId }, select: { creditDays: true } });
+  if (!client?.creditDays) return null;
+  const d = new Date();
+  d.setDate(d.getDate() + client.creditDays);
+  return d;
 }
 
 /**
@@ -421,6 +446,7 @@ export const getBillList = async (req, res) => {
               },
             },
           },
+          allocations: { where: { isReversed: false }, select: { amount: true } },
         },
         orderBy: { createdAt: "desc" },
         skip: (pageNum - 1) * limitNum,
@@ -431,13 +457,15 @@ export const getBillList = async (req, res) => {
     const sums = await db.bill.aggregate({ where, _sum: { amount: true, quantity: true } });
 
     const now = new Date();
-    const data = bills.map((bill) => ({
+    const data = bills.map(({ allocations, ...bill }) => ({
       ...bill,
+      paid: Math.round(allocations.reduce((s, a) => s + a.amount, 0) * 100) / 100,
+      balance: Math.round((bill.amount - allocations.reduce((s, a) => s + a.amount, 0)) * 100) / 100,
       orderId: bill.order.orderId,
       assignedTrucks: bill.order._count.tmDetails,
       // G18: computed "Overdue · N days" — nothing flips the stored status.
       daysOverdue:
-        ["PENDING", "SENT", "OVERDUE"].includes(bill.status) && bill.dueDate && new Date(bill.dueDate) < now
+        ["PENDING", "SENT", "OVERDUE", "PARTIALLY_PAID"].includes(bill.status) && bill.dueDate && new Date(bill.dueDate) < now
           ? Math.floor((now - new Date(bill.dueDate)) / 864e5)
           : 0,
     }));
@@ -730,6 +758,11 @@ export const updateBillStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: "Bill not found" });
     }
 
+    // W21: paid / part-paid come only from recorded payments, never by hand.
+    if (["PAID", "PARTIALLY_PAID"].includes(status) && bill.status !== status) {
+      return res.status(409).json({ success: false, message: "Record a payment against the bill — its status updates by itself" });
+    }
+
     // G4 / D5: an issued bill must not quietly unlock. CANCELLED is final, a
     // PAID bill never moves back, and only the Super Admin may cancel.
     const blocked = billStatusChangeBlocked(bill.status, status, req.access);
@@ -862,7 +895,12 @@ export const uploadTmChallan = async (req, res) => {
 
     const updated = await db.tmDetail.update({
       where: { id: tmId },
-      data: { challanUrl },
+      data: {
+        challanUrl,
+        // W13: pouring time (first challan), and the truck counts as delivered.
+        ...(!tm.deliveredAt && { deliveredAt: new Date() }),
+        ...(["ASSIGNED", "IN_TRANSIT", "REACHED"].includes(tm.status) && { status: "DELIVERED" }),
+      },
     });
 
     await createActivityLog({

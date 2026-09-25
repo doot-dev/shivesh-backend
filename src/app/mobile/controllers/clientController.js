@@ -1,4 +1,5 @@
 import db from '../../../config/database.js';
+import { buildLedger } from '../../admin/controllers/paymentController.js';
 import { getCreditPosition } from '../../../helper/creditPosition.js';
 import { buildInvoicePdf } from '../../../helper/invoicePdf.js';
 import { productByName } from '../../../helper/productUnits.js';
@@ -305,7 +306,7 @@ export async function getCredit(req, res) {
 }
 
 // Drafts (PENDING) are the office's working copy; the client sees issued bills.
-const CLIENT_BILL_STATUSES = ['SENT', 'PAID', 'OVERDUE'];
+const CLIENT_BILL_STATUSES = ['SENT', 'PAID', 'OVERDUE', 'PARTIALLY_PAID'];
 
 /** GET /client/bills?projectId= — the client's issued bills (W16). */
 export async function listBills(req, res) {
@@ -320,12 +321,15 @@ export async function listBills(req, res) {
       orderBy: { issueDate: 'desc' },
       select: {
         billNo: true, quantity: true, rate: true, amount: true, status: true, issueDate: true, dueDate: true, paidAt: true,
+        allocations: { where: { isReversed: false }, select: { amount: true } },
         order: { select: { orderId: true, productName: true, productGrade: true, project: { select: { projectId: true, projectName: true, siteName: true } } } },
       },
     });
     const now = new Date();
-    const data = bills.map((b) => ({
+    const data = bills.map(({ allocations, ...b }) => ({
       ...b,
+      paid: Math.round(allocations.reduce((s, x) => s + x.amount, 0) * 100) / 100,
+      balance: Math.round((b.amount - allocations.reduce((s, x) => s + x.amount, 0)) * 100) / 100,
       daysOverdue: b.status !== 'PAID' && b.dueDate && new Date(b.dueDate) < now ? Math.floor((now - new Date(b.dueDate)) / 864e5) : 0,
     }));
     return res.status(200).json({ success: true, data });
@@ -350,6 +354,31 @@ export async function downloadBillInvoice(req, res) {
     return res.send(Buffer.from(pdf));
   } catch (error) {
     logger.error('downloadBillInvoice error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** GET /client/payments — the client's recorded payments (read-only). */
+export async function listPayments(req, res) {
+  try {
+    const payments = await db.payment.findMany({
+      where: { clientId: req.user.data.id, status: 'ACTIVE' },
+      orderBy: { receivedOn: 'desc' },
+      select: { receiptNo: true, amount: true, receivedOn: true, mode: true, reference: true, allocations: { where: { isReversed: false }, select: { amount: true, bill: { select: { billNo: true } } } } },
+    });
+    return res.status(200).json({ success: true, data: payments });
+  } catch (error) {
+    logger.error('listPayments error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** GET /client/ledger — bills (Dr) and payments (Cr) with a running balance. */
+export async function getLedger(req, res) {
+  try {
+    return res.status(200).json({ success: true, data: await buildLedger(req.user.data.id, req.query) });
+  } catch (error) {
+    logger.error('getLedger error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }

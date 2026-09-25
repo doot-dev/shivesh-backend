@@ -23,7 +23,7 @@ function last12Months(now) {
 }
 
 /** Pure: payment behaviour from a client's bills. */
-export function paymentBehaviour(bills, now = new Date()) {
+export function paymentBehaviour(bills, now = new Date(), payments = []) {
   const live = bills.filter((b) => !b.isDeleted && b.status !== 'CANCELLED');
   const paid = live.filter((b) => b.status === 'PAID' && b.paidAt);
   const open = live.filter((b) => OPEN.includes(b.status));
@@ -38,7 +38,28 @@ export function paymentBehaviour(bills, now = new Date()) {
   const outstanding = open.reduce((s, b) => s + b.amount, 0);
   const oldest = open.filter((b) => b.issueDate).sort((a, b) => new Date(a.issueDate) - new Date(b.issueDate))[0];
   const months = last12Months(now);
+  // Phase 2 (W34 v2): from real payment records.
+  const active = payments.filter((p) => p.status === 'ACTIVE');
+  const reversed = payments.filter((p) => p.status === 'REVERSED');
+  const amounts = active.map((p) => p.amount).sort((a, b) => a - b);
+  const lastPay = active.map((p) => new Date(p.receivedOn)).sort((a, b) => b - a)[0];
+  const firstPay = active.map((p) => new Date(p.receivedOn)).sort((a, b) => a - b)[0];
+  const payMonths = firstPay ? Math.max(1, (now - firstPay) / (30 * DAY)) : null;
+  const modes = {};
+  for (const p of active) modes[p.mode] = (modes[p.mode] || 0) + 1;
+  const partPaid = live.filter((b) => b.status === 'PARTIALLY_PAID' || (b.allocations?.length || 0) > 1).length;
   return {
+    payments: {
+      count: active.length,
+      perMonth: payMonths ? r2(active.length / payMonths) : null,
+      median: amounts.length ? amounts[Math.floor(amounts.length / 2)] : null,
+      lastPaymentOn: lastPay || null,
+      daysSinceLastPayment: lastPay ? Math.floor((now - lastPay) / DAY) : null,
+      modes,
+      reversed: { count: reversed.length, amount: r2(reversed.reduce((s, p) => s + p.amount, 0)) },
+      advance: r2(active.reduce((s, p) => s + p.amount - (p.allocations || []).filter((a) => !a.isReversed).reduce((x, a) => x + a.amount, 0), 0)),
+      partPaidSharePct: live.length ? Math.round((partPaid / live.length) * 100) : null,
+    },
     billed: r2(live.reduce((s, b) => s + b.amount, 0)),
     collected: r2(paid.reduce((s, b) => s + b.amount, 0)),
     outstanding: r2(outstanding),
@@ -94,7 +115,7 @@ const ORDER_SELECT = {
   status: true, isDeleted: true, quantity: true, productName: true, productGrade: true, date: true, createdAt: true,
   project: { select: { projectId: true, projectName: true } },
   tmDetails: { select: { isDeleted: true, approvalStatus: true, rejectionReason: true } },
-  bill: { select: { billNo: true, amount: true, status: true, issueDate: true, dueDate: true, paidAt: true, isDeleted: true } },
+  bill: { select: { billNo: true, amount: true, status: true, issueDate: true, dueDate: true, paidAt: true, isDeleted: true, allocations: { where: { isReversed: false }, select: { id: true } } } },
 };
 
 export async function getClientAnalytics(clientId, now = new Date()) {
@@ -103,7 +124,8 @@ export async function getClientAnalytics(clientId, now = new Date()) {
   const orders = await db.order.findMany({ where: { clientId: client.id, isDeleted: false }, select: ORDER_SELECT });
   const bills = orders.map((o) => o.bill).filter(Boolean);
   const totalBilled = (await db.bill.aggregate({ where: { isDeleted: false, status: { not: 'CANCELLED' } }, _sum: { amount: true } }))._sum.amount || 0;
-  const pay = paymentBehaviour(bills, now);
+  const payments = await db.payment.findMany({ where: { clientId: client.id }, select: { amount: true, status: true, mode: true, receivedOn: true, allocations: { select: { amount: true, isReversed: true } } } });
+  const pay = paymentBehaviour(bills, now, payments);
   return {
     client,
     payment: pay,
@@ -116,13 +138,17 @@ export async function getClientAnalytics(clientId, now = new Date()) {
 export async function getPortfolioAnalytics(now = new Date()) {
   const clients = await db.client.findMany({
     where: { isDeleted: false },
-    select: { clientId: true, companyName: true, orders: { where: { isDeleted: false }, select: ORDER_SELECT } },
+    select: {
+      clientId: true, companyName: true,
+      orders: { where: { isDeleted: false }, select: ORDER_SELECT },
+      payments: { select: { amount: true, status: true, mode: true, receivedOn: true, allocations: { select: { amount: true, isReversed: true } } } },
+    },
   });
   const rows = clients.map((c) => {
     const bills = c.orders.map((o) => o.bill).filter(Boolean);
-    return { clientId: c.clientId, companyName: c.companyName, payment: paymentBehaviour(bills, now), orders: orderPatterns(c.orders, now) };
+    return { clientId: c.clientId, companyName: c.companyName, payment: paymentBehaviour(bills, now, c.payments), orders: orderPatterns(c.orders, now) };
   });
   const allBills = clients.flatMap((c) => c.orders.map((o) => o.bill).filter(Boolean));
   const allOrders = clients.flatMap((c) => c.orders);
-  return { clients: rows, totals: { payment: paymentBehaviour(allBills, now), orders: orderPatterns(allOrders, now) } };
+  return { clients: rows, totals: { payment: paymentBehaviour(allBills, now, clients.flatMap((c) => c.payments)), orders: orderPatterns(allOrders, now) } };
 }

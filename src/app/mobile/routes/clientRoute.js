@@ -28,6 +28,8 @@ router.get('/cube-tests', verifyClientToken, cubeTestController.clientListAllCub
 // Money (P1.14, P1.16)
 router.get('/credit', verifyClientToken, clientController.getCredit);
 router.get('/bills', verifyClientToken, clientController.listBills);
+router.get('/payments', verifyClientToken, clientController.listPayments);
+router.get('/ledger', verifyClientToken, clientController.getLedger);
 router.get('/bills/:billNo/invoice', verifyClientToken, clientController.downloadBillInvoice);
 
 // Notifications
