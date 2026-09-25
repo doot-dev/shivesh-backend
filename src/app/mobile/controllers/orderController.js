@@ -8,7 +8,8 @@ import { onOrderCompleted } from '../../../helper/orderCompletion.js';
 import { quantityError, priceListError } from '../../../helper/orderValidation.js';
 import { bookingSnapshot, creditGate } from '../../../helper/orderBooking.js';
 import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow.js';
-import { DELIVERY_STEPS, DELIVERY_TO_ORDER_STATUS, deliveryStepBlocked } from '../../../helper/orderStatus.js';
+import { orderProjectScope, projectScope } from '../../../helper/clientAccess.js';
+import { ACTIVE_STATUSES, PAST_STATUSES, FIELD_STATUSES, isActiveStatus, orderStatusBlocked } from '../../../helper/orderStatus.js';
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
 async function assignedTechUserIds(orderDbId) {
@@ -21,9 +22,10 @@ async function assignedTechUserIds(orderDbId) {
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-function orderIsActive(status) {
-  return !['DELIVERED', 'COMPLETED', 'CANCELLED'].includes(status);
-}
+const orderIsActive = isActiveStatus;
+
+/** Field-app builds before the single status sent a delivery step instead. */
+const LEGACY_STEP_TO_STATUS = { IN_TRANSIT: 'DISPATCHED', REACHED: 'REACHED', DELIVERED: 'REACHED', COMPLETED: 'COMPLETED' };
 
 function buildOrderSelect() {
   return {
@@ -36,7 +38,6 @@ function buildOrderSelect() {
     date: true,
     time: true,
     status: true,
-    deliveryStatus: true,
     createdAt: true,
     project: { select: { projectId: true, projectName: true, siteName: true, projectLocation: true } },
     client: { select: { clientId: true, companyName: true, contactNumber: true } },
@@ -63,6 +64,8 @@ function buildOrderSelect() {
       orderBy: { createdAt: 'asc' },
     },
     comments: { orderBy: { createdAt: 'asc' } },
+    // docs/06: who placed it from the client app, so the plant/tech knows whom to call.
+    placedBy: { select: { name: true, phone: true, role: { select: { name: true } } } },
   };
 }
 
@@ -79,9 +82,9 @@ function assignedToTech(userId) {
  * the technician is assigned to. Order codes are sequential, so an unscoped
  * lookup let any client read or post in any other client's chat.
  */
-function callerOrderWhere(orderId, user) {
+function callerOrderWhere(orderId, user, clientAccess) {
   const scope = user?.type === 'CLIENT'
-    ? { clientId: user.id }
+    ? { clientId: user.id, ...orderProjectScope(clientAccess) }
     : assignedToTech(user?.id);
   return { orderId, isDeleted: false, ...scope };
 }
@@ -161,11 +164,12 @@ export async function clientListOrders(req, res) {
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
-    const activeStatuses = ['NEW', 'CONFIRMED', 'IN_PROGRESS'];
-    const pastStatuses = ['DELIVERED', 'COMPLETED', 'CANCELLED'];
+    const activeStatuses = ACTIVE_STATUSES;
+    const pastStatuses = PAST_STATUSES;
 
     const where = {
       clientId: clientDbId,
+      ...orderProjectScope(req.clientAccess),
       isDeleted: false,
       status: { in: type === 'past' ? pastStatuses : activeStatuses },
       ...(projectId ? { project: { projectId } } : {}),
@@ -216,7 +220,7 @@ export async function clientGetOrder(req, res) {
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, clientId: clientDbId, isDeleted: false },
+      where: { orderId, clientId: clientDbId, isDeleted: false, ...orderProjectScope(req.clientAccess) },
       select: buildOrderSelect(),
     });
 
@@ -254,9 +258,9 @@ export async function clientCreateOrder(req, res) {
       return res.status(400).json({ success: false, message: dateCheck.message });
     }
 
-    // Verify project belongs to this client
+    // Verify project belongs to this client — and is one this contact may order for (Q3).
     const project = await db.project.findFirst({
-      where: { projectId, clientId: clientDbId, isDeleted: false, status: 'ACTIVE' },
+      where: { projectId, clientId: clientDbId, isDeleted: false, status: 'ACTIVE', ...projectScope(req.clientAccess) },
     });
 
     if (!project) {
@@ -301,8 +305,22 @@ export async function clientCreateOrder(req, res) {
         time: time || null,
         deliveryAddress: deliveryAddress || null,
         status: 'NEW',
-        deliveryStatus: 'ASSIGNED',
+        placedByContactId: req.clientAccess.contact?.id ?? null,
       },
+    });
+
+    const placer = req.clientAccess.contact;
+    await createActivityLog({
+      title: 'Order placed (client app)',
+      description: `${orderId} placed by ${placer ? `${placer.name} (${placer.role.name}, ${placer.phone})` : 'the client'}`,
+      entityType: 'ORDER',
+      entityId: order.id,
+      action: 'CREATED',
+      event: 'ORDER_PLACED',
+      actorType: placer ? 'CLIENT_CONTACT' : 'CLIENT',
+      actorId: placer?.id ?? clientDbId,
+      source: 'CLIENT_APP',
+      orderRef: orderId,
     });
 
     if (gate.hold) {
@@ -327,7 +345,7 @@ export async function clientCreateOrder(req, res) {
     // Notify the admin panel's bell (live over the WebSocket).
     await notifyAdmins({
       title: 'New Order Created',
-      message: `Client placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
+      message: `${placer ? `${placer.name} (${placer.role.name})` : 'Client'} placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
       type: 'ORDER_CREATED',
       relatedId: order.id,
       orderId: order.id,
@@ -371,14 +389,13 @@ export async function clientCancelOrder(req, res) {
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, clientId: clientDbId, isDeleted: false },
+      where: { orderId, clientId: clientDbId, isDeleted: false, ...orderProjectScope(req.clientAccess) },
       include: { tmDetails: { where: { isDeleted: false } } },
     });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     const dispatched =
-      !['NEW', 'CONFIRMED'].includes(order.status) ||
-      order.deliveryStatus !== 'ASSIGNED' ||
+      !['NEW', 'CONFIRMED', 'DELAYED'].includes(order.status) ||
       order.tmDetails.some((tm) => tm.dispatchTime || tm.batchStartTime || tm.status !== 'ASSIGNED');
     if (dispatched) {
       return res.status(409).json({ success: false, message: 'Order already dispatched — please message the office' });
@@ -391,7 +408,7 @@ export async function clientCancelOrder(req, res) {
         message: `Order cancelled by client: ${reason.trim()}`,
         authorType: 'CLIENT',
         authorId: String(clientDbId),
-        authorName: req.user.data.name || 'Client',
+        authorName: req.user.data.contactName || req.user.data.name || 'Client',
       },
     });
     await notifyAdmins({
@@ -411,7 +428,7 @@ export async function clientCancelOrder(req, res) {
       relatedId: order.id,
       orderId: order.id,
     })));
-    emitOrderEvent(orderId, 'order:status', { orderId, status: 'CANCELLED', deliveryStatus: order.deliveryStatus, isActive: false }, { clientDbId, techUserIds });
+    emitOrderEvent(orderId, 'order:status', { orderId, status: 'CANCELLED', isActive: false }, { clientDbId, techUserIds });
 
     return res.status(200).json({ success: true, message: 'Order cancelled' });
   } catch (error) {
@@ -435,8 +452,8 @@ export async function techListOrders(req, res) {
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
-    const activeStatuses = ['NEW', 'CONFIRMED', 'IN_PROGRESS'];
-    const pastStatuses = ['DELIVERED', 'COMPLETED', 'CANCELLED'];
+    const activeStatuses = ACTIVE_STATUSES;
+    const pastStatuses = PAST_STATUSES;
 
     const where = {
       ...assignedToTech(userId),
@@ -496,17 +513,16 @@ export async function techGetOrder(req, res) {
   }
 }
 
-// ─── Tech: update delivery status ────────────────────────────────────────────
+// ─── Tech: move the order along (Dispatched, Delayed, Reached, Completed) ─────
 
 export async function techUpdateStatus(req, res) {
   try {
     const { orderId } = req.params;
-    const { deliveryStatus } = req.body;
+    const status = req.body.status ?? LEGACY_STEP_TO_STATUS[req.body.deliveryStatus];
     const userId = req.user.data.id;
 
-    const validStatuses = DELIVERY_STEPS;
-    if (!deliveryStatus || !validStatuses.includes(deliveryStatus)) {
-      return res.status(400).json({ success: false, message: 'Invalid deliveryStatus' });
+    if (!FIELD_STATUSES.includes(status)) {
+      return res.status(400).json({ success: false, message: `status must be one of ${FIELD_STATUSES.join(', ')}` });
     }
 
     const order = await db.order.findFirst({
@@ -519,31 +535,24 @@ export async function techUpdateStatus(req, res) {
 
     if (await rejectIfLocked(order, req, res)) return;
 
-    // W9: forward only, never on a cancelled order, never reopening a completed one.
-    const blocked =
-      deliveryStepBlocked(order.status, order.deliveryStatus, deliveryStatus) ||
-      (order.status === 'COMPLETED' && deliveryStatus !== 'COMPLETED' ? 'the order is already completed' : null);
+    // W9: the same transition table as the panel.
+    const blocked = orderStatusBlocked(order.status, status);
     if (blocked) {
       return res.status(409).json({ success: false, message: `Order ${orderId}: ${blocked}` });
     }
     if (order.creditHold) {
       return res.status(409).json({ success: false, message: `Order ${orderId} is on credit hold — wait for the office to release it` });
     }
-    const statusMap = DELIVERY_TO_ORDER_STATUS;
-
     const updated = await db.order.update({
       where: { id: order.id },
-      data: {
-        deliveryStatus,
-        status: statusMap[deliveryStatus] || order.status,
-      },
+      data: { status },
     });
 
-    const statusLabel = deliveryStatus.replace('_', ' ');
+    const statusLabel = status.charAt(0) + status.slice(1).toLowerCase();
 
     await createActivityLog({
       title: 'Order status updated (field app)',
-      description: `Order ${orderId} moved to ${statusLabel} by ${req.user.data.name || 'a technician'} (was ${order.deliveryStatus})`,
+      description: `Order ${orderId} moved to ${statusLabel} by ${req.user.data.name || 'a technician'} (was ${order.status})`,
       entityType: 'ORDER',
       entityId: order.id,
       action: 'STATUS_CHANGED',
@@ -582,7 +591,6 @@ export async function techUpdateStatus(req, res) {
       {
         orderId,
         status: updated.status,
-        deliveryStatus: updated.deliveryStatus,
         isActive: orderIsActive(updated.status),
       },
       {
@@ -594,7 +602,7 @@ export async function techUpdateStatus(req, res) {
     return res.status(200).json({
       success: true,
       message: 'Status updated',
-      data: { deliveryStatus: updated.deliveryStatus },
+      data: { status: updated.status },
       ...(billing?.error && { billError: billing.error }),
       ...(billing?.pending && { billPending: billing.pending }),
     });
@@ -610,7 +618,7 @@ export async function listComments(req, res) {
   try {
     const { orderId } = req.params;
 
-    const order = await db.order.findFirst({ where: callerOrderWhere(orderId, req.user.data) });
+    const order = await db.order.findFirst({ where: callerOrderWhere(orderId, req.user.data, req.clientAccess) });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     const comments = await db.orderComment.findMany({
@@ -637,12 +645,12 @@ export async function addComment(req, res) {
       return res.status(400).json({ success: false, message: 'Message is required' });
     }
 
-    const order = await db.order.findFirst({ where: callerOrderWhere(orderId, req.user.data) });
+    const order = await db.order.findFirst({ where: callerOrderWhere(orderId, req.user.data, req.clientAccess) });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     const authorType = userData.type; // CLIENT or FIELD_TECH
     const authorId = String(userData.id);
-    const authorName = userData.name;
+    const authorName = userData.contactName || userData.name;
 
     const comment = await db.orderComment.create({
       data: {

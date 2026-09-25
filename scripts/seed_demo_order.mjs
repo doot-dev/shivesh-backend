@@ -160,7 +160,7 @@ try {
   // Give it a realistic in-flight state so the FT app has something to act on.
   await db.order.update({
     where: { id: orderDbId },
-    data: { status: 'IN_PROGRESS', deliveryStatus: 'IN_TRANSIT' },
+    data: { status: 'DISPATCHED' },
   });
 
   // ── 4. Demo TECHNICIAN + assignment ────────────────────────────────────────

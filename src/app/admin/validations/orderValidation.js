@@ -13,8 +13,7 @@ export const updateOrderValidation = {
 
 export const updateOrderStatusValidation = {
   orderId: "required|string",
-  status: "in:NEW,CONFIRMED,IN_PROGRESS,DELIVERED,COMPLETED,CANCELLED",
-  deliveryStatus: "in:ASSIGNED,IN_TRANSIT,REACHED,DELIVERED,COMPLETED",
+  status: "required|in:NEW,CONFIRMED,DELAYED,DISPATCHED,REACHED,COMPLETED,CANCELLED",
 };
 
 // Order Vendor Validations

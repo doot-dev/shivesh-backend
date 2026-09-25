@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as pc from '../controllers/paymentController.js';
 import * as clientController from "../controllers/clientController.js";
+import * as clientAccess from '../controllers/clientAccessController.js';
 import { verifyToken } from "../../../config/jwtConfig.js";
 import { uploadMultipleKYC } from "../../../config/multerConfig.js";
 import { requirePermission, can } from "../../../helper/accessControl.js";
@@ -22,5 +23,11 @@ clientRoute.get("/:clientId/ledger", verifyToken, requirePermission(can('payment
 clientRoute.put("/:clientId/credit", verifyToken, requirePermission(can('clients', 'update')), pc.updateClientCredit);
 clientRoute.post("/:clientId/credit-extra", verifyToken, requirePermission(can('orders', 'approve')), pc.grantExtraCredit);
 clientRoute.post("/:clientId/credit-extra/:id/revoke", verifyToken, requirePermission(can('orders', 'approve')), pc.revokeExtraCredit);
+
+// docs/06: the client's Team — contacts who log in to the client app.
+clientRoute.get("/:clientId/contacts", verifyToken, requirePermission(can('clients', 'view')), clientAccess.listClientContacts);
+clientRoute.post("/:clientId/contacts", verifyToken, requirePermission(can('clients', 'update')), clientAccess.createClientContact);
+clientRoute.put("/:clientId/contacts/:contactId", verifyToken, requirePermission(can('clients', 'update')), clientAccess.updateClientContact);
+clientRoute.delete("/:clientId/contacts/:contactId", verifyToken, requirePermission(can('clients', 'update')), clientAccess.deleteClientContact);
 
 export default clientRoute;

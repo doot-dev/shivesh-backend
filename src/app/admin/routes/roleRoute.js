@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as roleController from '../controllers/roleController.js';
+import * as clientAccess from '../controllers/clientAccessController.js';
 import { verifyToken } from '../../../config/jwtConfig.js';
 import { requirePermission, can } from '../../../helper/accessControl.js';
 
@@ -19,5 +20,12 @@ router.delete('/', verifyToken, requirePermission(can('roles', 'delete')), roleC
 // users.update rather than on the roles module.
 router.get('/user-permissions', verifyToken, requirePermission(can('users', 'view')), roleController.getUserPermissions);
 router.put('/user-permissions', verifyToken, requirePermission(can('users', 'update')), roleController.setUserPermissions);
+
+// docs/06: Client Roles — the client app's roles, a separate catalog (module clientRoles).
+router.get('/client/catalog', verifyToken, requirePermission(can('clientRoles', 'view')), clientAccess.getCatalog);
+router.get('/client/all', verifyToken, requirePermission(can('clientRoles', 'view'), can('clients', 'view')), clientAccess.listRoles);
+router.post('/client', verifyToken, requirePermission(can('clientRoles', 'create')), clientAccess.createRole);
+router.put('/client', verifyToken, requirePermission(can('clientRoles', 'update')), clientAccess.updateRole);
+router.delete('/client', verifyToken, requirePermission(can('clientRoles', 'delete')), clientAccess.deleteRole);
 
 export default router;

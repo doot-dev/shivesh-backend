@@ -790,7 +790,8 @@ export const updateBillStatus = async (req, res) => {
         targetId: order.clientId,
         title: `Bill ${status === "SENT" ? "Received" : status === "PAID" ? "Paid" : "Overdue"}`,
         message: `Bill ${billNo} for order ${order.orderId} is ${status.toLowerCase()}`,
-        type: "STATUS_UPDATED",
+        // Money type: only contacts with bills/account access get it (docs/06).
+        type: "BILL_STATUS",
         relatedId: order.id,
         orderId: order.id,
       });

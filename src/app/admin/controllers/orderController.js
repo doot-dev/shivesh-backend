@@ -13,7 +13,10 @@ import {
 } from "../validations/orderValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { onOrderCompleted } from "../../../helper/orderCompletion.js";
-import { orderStatusBlocked } from "../../../helper/orderStatus.js";
+import { orderStatusBlocked, isActiveStatus } from "../../../helper/orderStatus.js";
+
+/** "DISPATCHED" → "Dispatched" for messages people read. */
+const statusLabel = (s) => s.charAt(0) + s.slice(1).toLowerCase();
 import { rejectIfLocked, orderEditableUntil } from "../../../helper/updateWindow.js";
 import { quantityError, priceListError } from "../../../helper/orderValidation.js";
 import { bookingSnapshot, creditGate } from "../../../helper/orderBooking.js";
@@ -95,6 +98,8 @@ function buildInclude() {
     client: {
       select: { clientId: true, companyName: true, contactNumber: true },
     },
+    // docs/06: the client-app contact who placed it (null = placed by the office).
+    placedBy: { select: { name: true, phone: true, role: { select: { name: true } } } },
     vendors: buildVendorInclude(),
     technicians: buildTechnicianInclude(),
     tmDetails: { where: { isDeleted: false }, orderBy: { createdAt: "asc" } },
@@ -239,6 +244,7 @@ export async function listOrders(req, res) {
             select: { projectId: true, projectName: true, siteName: true },
           },
           client: { select: { clientId: true, companyName: true } },
+          placedBy: { select: { name: true, phone: true, role: { select: { name: true } } } },
           vendors: buildVendorInclude(),
           technicians: buildTechnicianInclude(),
           _count: { select: { tmDetails: true, comments: true } },
@@ -455,7 +461,6 @@ export async function createOrder(req, res) {
         date: date || null,
         time: time || null,
         status: "NEW",
-        deliveryStatus: "ASSIGNED",
         ...(vendorRows.length && { vendors: { create: vendorRows } }),
         ...(technicianIds.length && {
           technicians: { create: technicianIds.map((userId) => ({ userId })) },
@@ -648,14 +653,7 @@ export async function updateOrderStatus(req, res) {
       });
     }
 
-    const { status, deliveryStatus } = req.body;
-
-    if (!status && !deliveryStatus) {
-      return res.status(400).json({
-        success: false,
-        message: "status or deliveryStatus is required",
-      });
-    }
+    const { status } = req.body;
 
     const order = await db.order.findFirst({
       where: { orderId, isDeleted: false },
@@ -676,9 +674,7 @@ export async function updateOrderStatus(req, res) {
     }
 
     // W9: one transition table for every status change.
-    const blocked =
-      orderStatusBlocked(order.status, status) ||
-      (deliveryStatus && order.status === "CANCELLED" ? "the order is cancelled" : null);
+    const blocked = orderStatusBlocked(order.status, status);
     if (blocked) {
       return res.status(409).json({ success: false, message: `Order ${orderId}: ${blocked}` });
     }
@@ -686,8 +682,7 @@ export async function updateOrderStatus(req, res) {
     const updated = await db.order.update({
       where: { id: order.id },
       data: {
-        ...(status && { status }),
-        ...(deliveryStatus && { deliveryStatus }),
+        status,
         ...(status === "CANCELLED" && cancelReason?.trim() && { cancelReason: cancelReason.trim() }),
       },
       include: buildInclude(),
@@ -695,7 +690,7 @@ export async function updateOrderStatus(req, res) {
 
     await notifyOrderTechnicians(order, {
       title: "Order Status Updated",
-      message: `Order ${orderId} is now ${status || deliveryStatus}`,
+      message: `Order ${orderId} is now ${statusLabel(status)}`,
       type: "STATUS_UPDATED",
     });
 
@@ -705,7 +700,7 @@ export async function updateOrderStatus(req, res) {
       targetType: "CLIENT",
       targetId: order.clientId,
       title: "Order Status Updated",
-      message: `Your order ${orderId} is now ${(status || deliveryStatus).replace("_", " ")}`,
+      message: `Your order ${orderId} is now ${statusLabel(status)}`,
       type: "STATUS_UPDATED",
       relatedId: order.id,
       orderId: order.id,
@@ -713,7 +708,7 @@ export async function updateOrderStatus(req, res) {
 
     await notifyAdmins({
       title: "Order Status Updated",
-      message: `Order ${orderId} is now ${status || deliveryStatus}`,
+      message: `Order ${orderId} is now ${statusLabel(status)}`,
       type: "STATUS_UPDATED",
       relatedId: order.id,
       orderId: order.id,
@@ -726,7 +721,7 @@ export async function updateOrderStatus(req, res) {
       {
         orderId,
         status: updated.status,
-        deliveryStatus: updated.deliveryStatus,
+        isActive: isActiveStatus(updated.status),
       },
       {
         clientDbId: order.clientId,
@@ -736,7 +731,7 @@ export async function updateOrderStatus(req, res) {
 
     await createActivityLog({
       title: "Order status updated",
-      description: `Order ${orderId} status changed to ${status || deliveryStatus}`,
+      description: `Order ${orderId} status changed from ${order.status} to ${status}`,
       entityType: "ORDER",
       entityId: order.id,
       action: "STATUS_CHANGED",

@@ -12,7 +12,7 @@
  *                     { type: 'ping' }
  *   server -> client: { type: 'connected',      data: { ... } }
  *                     { type: 'comment:new',    orderId, data: <comment> }
- *                     { type: 'order:status',   orderId, data: { status, deliveryStatus } }
+ *                     { type: 'order:status',   orderId, data: { status, isActive } }
  *                     { type: 'order:new',      orderId, data: <order> }
  *                     { type: 'notification',   data: <notification> }
  *                     { type: 'pong' }
@@ -22,6 +22,7 @@ import jsonwebtoken from 'jsonwebtoken';
 import db from '../config/database.js';
 import { decrypt } from '../helper/security.js';
 import logger from '../helper/logger.js';
+import { loadClientAccess, orderProjectScope } from '../helper/clientAccess.js';
 
 const { verify } = jsonwebtoken;
 
@@ -84,15 +85,16 @@ function send(ws, payload) {
  * a CLIENT may only ever join their OWN orders and a FIELD_TECH only orders
  * they are assigned to. Never relax this to "any authenticated user".
  */
-async function canAccessOrder(user, orderId) {
+async function canAccessOrder(user, orderId, access) {
   if (user.type === 'ADMIN') return true;
 
   // Dev bypass accounts have no real rows — let them subscribe to nothing.
   if (String(user.id).startsWith('dev-')) return false;
 
   if (user.type === 'CLIENT') {
+    if (!access?.permissions.has('orders.view')) return false;
     const order = await db.order.findFirst({
-      where: { orderId, clientId: String(user.id), isDeleted: false },
+      where: { orderId, clientId: String(user.id), isDeleted: false, ...orderProjectScope(access) },
       select: { id: true },
     });
     return Boolean(order);
@@ -127,7 +129,7 @@ async function handleMessage(ws, raw) {
       const orderId = String(msg.orderId);
       let allowed = false;
       try {
-        allowed = await canAccessOrder(ws.user, orderId);
+        allowed = await canAccessOrder(ws.user, orderId, ws.access);
       } catch (err) {
         logger.error('WS subscribe check failed:', err.message);
       }
@@ -176,6 +178,13 @@ export function initSocketServer(httpServer) {
 
     ws.user = user;
     ws.rooms = new Set();
+    // docs/06: a client socket is one contact — load their role and projects once.
+    // ponytail: read at connect; a role change reaches the socket on reconnect.
+    if (user.type === 'CLIENT') {
+      loadClientAccess(user)
+        .then((access) => (access ? (ws.access = access) : ws.close(4401, 'Unauthorized')))
+        .catch(() => ws.close(4401, 'Unauthorized'));
+    }
     ws.isAlive = true;
     sockets.add(ws);
 
@@ -249,7 +258,7 @@ export function emitOrderEvent(orderId, type, data, targets = {}) {
 
     const inRoom = ws.rooms?.has(String(orderId));
     const isOwningClient =
-      u.type === 'CLIENT' && clientDbId && String(u.id) === String(clientDbId);
+      u.type === 'CLIENT' && clientDbId && String(u.id) === String(clientDbId) && clientSocketMaySee(ws, data);
     const isAssignedTech =
       u.type === 'FIELD_TECH' && techIds.includes(String(u.id));
     const isAdmin = u.type === 'ADMIN';
@@ -258,6 +267,17 @@ export function emitOrderEvent(orderId, type, data, targets = {}) {
       send(ws, payload);
     }
   }
+}
+
+/**
+ * A contact limited to some projects must not get another site's new order.
+ * Events without project info (status ticks) carry nothing new about the order.
+ */
+function clientSocketMaySee(ws, data) {
+  const a = ws.access;
+  if (!a?.permissions.has('orders.view')) return false;
+  const code = data?.project?.projectId;
+  return !a.projectCodes || !code || a.projectCodes.includes(code);
 }
 
 /**

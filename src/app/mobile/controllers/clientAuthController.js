@@ -1,6 +1,10 @@
 import db from '../../../config/database.js';
 import { generateToken } from '../../../config/jwtConfig.js';
 import logger from '../../../helper/logger.js';
+import { createActivityLog } from '../../../helper/activityLogger.js';
+import { normalizePhone, activeContactWhere, requireKyc } from '../../../helper/clientAccess.js';
+
+export { requireKyc };
 
 const DEV_MOCK_PHONE = '9999999999';
 
@@ -14,126 +18,93 @@ const DEV_MOCK_PHONE = '9999999999';
  */
 const FIXED_CLIENT_OTP = '1111';
 
-export const requireKyc = () => process.env.CLIENT_LOGIN_REQUIRES_KYC !== 'false';
-
-// Normalize to 10-digit Indian mobile number regardless of how it's stored
-function normalizePhone(raw) {
-  const s = String(raw).replace(/\s+/g, '').replace(/^\+/, '');
-  if (s.startsWith('91') && s.length === 12) return s.slice(2);
-  return s;
-}
-
-function phoneVariants(phone) {
-  const n = normalizePhone(phone);
-  return [n, `+91${n}`, `91${n}`];
-}
+const DEV_LOGIN = {
+  token: () => generateToken({ type: 'CLIENT', id: 'dev-client', clientId: 'DEV001', name: 'Dev Client', phone: DEV_MOCK_PHONE }),
+  data: { name: 'Dev Client', clientId: 'DEV001', email: 'dev@test.com', phone: DEV_MOCK_PHONE },
+};
 
 /**
- * Resolve an active client from EITHER a mobile number (in any stored format —
- * bare 10-digit, +91…, 91…) OR a clientId code such as CL-2025-0004.
+ * The person logging in (docs/06): an active contact, on an active role, of an
+ * active (and, per D16, KYC-verified) client. Accepts a mobile number in any
+ * format, or a client code such as CL-2025-0004, which maps to the Owner.
  *
- * Every auth entry point goes through this, because client.contactNumber is not
- * stored consistently; a strict equality match here silently 404s real clients.
+ * Q6: one phone belongs to one company, so the first match is the only match.
  */
-function findActiveClient(input) {
-  const normalized = normalizePhone(input);
-  return db.client.findFirst({
-    where: {
-      isDeleted: false,
-      status: 'ACTIVE',
-      // D16: only clients the office has verified (KYC) may log in. Switchable
-      // so a demo can run before the office has verified the existing clients.
-      ...(requireKyc() && { kycStatus: 'VERIFIED' }),
-      OR: [
-        ...phoneVariants(input).map((v) => ({ contactNumber: v })),
-        { contactNumber: { endsWith: normalized } },
-        { clientId: input },
-      ],
-    },
-  });
+function findActiveContact(input) {
+  const base = activeContactWhere();
+  const where = /^CL-/i.test(input)
+    ? { ...base, client: { ...base.client, clientId: input.toUpperCase() }, role: { ...base.role, isSystem: true } }
+    : { ...base, phone: normalizePhone(input) };
+  return db.clientContact.findFirst({ where, include: { client: true, role: true }, orderBy: { createdAt: 'asc' } });
 }
+
+/** Issue the JWT for a contact. `name` stays the company for older app builds. */
+async function issueLogin(contact, via) {
+  const { client, role } = contact;
+  const token = generateToken({
+    type: 'CLIENT',
+    id: client.id,
+    clientId: client.clientId,
+    name: client.companyName,
+    phone: contact.phone,
+    contactId: contact.id,
+  });
+
+  await db.clientContact.update({ where: { id: contact.id }, data: { lastLoginAt: new Date() } });
+  await createActivityLog({
+    title: 'Client app login',
+    description: `${contact.name} (${role.name}) signed in to ${client.companyName} via ${via}`,
+    entityType: 'CLIENT',
+    entityId: client.id,
+    action: 'LOGGED',
+    event: 'CLIENT_LOGIN',
+    actorType: 'CLIENT_CONTACT',
+    actorId: contact.id,
+    source: 'CLIENT_APP',
+    clientRef: client.clientId,
+  });
+  logger.info(`Client ${client.clientId} contact ${contact.id} logged in via ${via}`);
+
+  return {
+    token,
+    name: client.companyName,
+    clientId: client.clientId,
+    email: client.email,
+    phone: contact.phone,
+    contactName: contact.name,
+    role: role.name,
+  };
+}
+
+const notFound = (res) =>
+  res.status(404).json({ success: false, message: 'No active client account found for this number' });
 
 /**
  * Number-only client login — NOT routed by default; the live flow is
  * sendOtp -> verifyOtp with a fixed OTP.
  *
- * Accepts EITHER the registered mobile number (10-digit, +91/91 tolerated) OR
- * the clientId code (e.g. CL-2025-0004) in the same `number` field, and returns
- * the same JWT that verifyOtp issues, so every downstream route is unchanged.
- *
  * SECURITY: there is deliberately no second factor here — possession of the
  * number IS the credential. Because that bypasses the OTP step entirely, the
  * route is only registered when ALLOW_NUMBER_ONLY_LOGIN=true (see
- * clientAuthRoute.js); leaving it always-on would make the OTP screen
- * decorative.
+ * clientAuthRoute.js).
  */
 export async function loginWithNumber(req, res) {
   try {
     const raw = req.body?.number ?? req.body?.phone ?? req.body?.clientId;
-
     if (!raw || !String(raw).trim()) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'Client number is required' });
+      return res.status(400).json({ success: false, message: 'Client number is required' });
     }
-
     const input = String(raw).trim();
-    const normalizedPhone = normalizePhone(input);
 
     // DEV BYPASS — remove before production
-    if (normalizedPhone === DEV_MOCK_PHONE) {
-      const mockPayload = {
-        type: 'CLIENT',
-        id: 'dev-client',
-        clientId: 'DEV001',
-        name: 'Dev Client',
-        phone: normalizedPhone,
-      };
-      logger.info(`[DEV] Client number login bypass for ${input}`);
-      return res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        data: {
-          token: generateToken(mockPayload),
-          name: 'Dev Client',
-          clientId: 'DEV001',
-          email: 'dev@test.com',
-          phone: normalizedPhone,
-        },
-      });
+    if (normalizePhone(input) === DEV_MOCK_PHONE) {
+      return res.status(200).json({ success: true, message: 'Login successful', data: { token: DEV_LOGIN.token(), ...DEV_LOGIN.data } });
     }
 
-    const client = await findActiveClient(input);
+    const contact = await findActiveContact(input);
+    if (!contact) return notFound(res);
 
-    if (!client) {
-      logger.info(`Client number login failed — no active client for ${input}`);
-      return res.status(404).json({
-        success: false,
-        message: 'No active client account found for this number',
-      });
-    }
-
-    const token = generateToken({
-      type: 'CLIENT',
-      id: client.id,
-      clientId: client.clientId,
-      name: client.companyName,
-      phone: client.contactNumber,
-    });
-
-    logger.info(`Client ${client.clientId} logged in by number`);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        token,
-        name: client.companyName,
-        clientId: client.clientId,
-        email: client.email,
-        phone: client.contactNumber,
-      },
-    });
+    return res.status(200).json({ success: true, message: 'Login successful', data: await issueLogin(contact, 'number') });
   } catch (error) {
     logger.error('Client loginWithNumber error:', error);
     return res.status(500).json({ success: false, message: 'Something went wrong' });
@@ -141,12 +112,10 @@ export async function loginWithNumber(req, res) {
 }
 
 /**
- * Step 1 of client login: confirm the number belongs to an active client.
+ * Step 1 of client login: confirm the number belongs to an active contact.
  *
  * No SMS is sent and no OTP row is written — the OTP is the fixed
- * FIXED_CLIENT_OTP and is checked by verifyOtp. This endpoint exists purely so
- * the app can validate the number before showing the OTP screen, and it
- * deliberately does NOT return the OTP in the response.
+ * FIXED_CLIENT_OTP and is checked by verifyOtp.
  */
 export async function sendOtp(req, res) {
   try {
@@ -154,31 +123,20 @@ export async function sendOtp(req, res) {
     if (!raw || !String(raw).trim()) {
       return res.status(400).json({ success: false, message: 'Phone number is required' });
     }
-
     const input = String(raw).trim();
-    const normalizedPhone = normalizePhone(input);
 
     // DEV BYPASS — remove before production
-    if (normalizedPhone === DEV_MOCK_PHONE) {
-      logger.info(`[DEV] Client OTP step bypass for ${input}`);
+    if (normalizePhone(input) === DEV_MOCK_PHONE) {
       return res.status(200).json({ success: true, message: 'OTP sent successfully' });
     }
 
-    const client = await findActiveClient(input);
-    if (!client) {
-      logger.info(`Client sendOtp failed — no active client for ${input}`);
-      return res.status(404).json({
-        success: false,
-        message: 'No active client account found for this number',
-      });
+    const contact = await findActiveContact(input);
+    if (!contact) {
+      logger.info(`Client sendOtp failed — no active contact for ${input}`);
+      return notFound(res);
     }
 
-    logger.info(`Client ${client.clientId} passed OTP step 1 (fixed OTP)`);
-
-    return res.status(200).json({
-      success: true,
-      message: 'OTP sent successfully',
-    });
+    return res.status(200).json({ success: true, message: 'OTP sent successfully' });
   } catch (error) {
     logger.error('Client sendOtp error:', error);
     return res.status(500).json({ success: false, message: 'Something went wrong' });
@@ -189,8 +147,7 @@ export async function sendOtp(req, res) {
  * Step 2 of client login: check the OTP and issue the JWT.
  *
  * The OTP is compared against FIXED_CLIENT_OTP here on the server — the app
- * never decides whether an OTP is valid, so changing the constant changes the
- * behaviour of every client without shipping a new build.
+ * never decides whether an OTP is valid.
  */
 export async function verifyOtp(req, res) {
   try {
@@ -199,9 +156,7 @@ export async function verifyOtp(req, res) {
     if (!raw || !otp) {
       return res.status(400).json({ success: false, message: 'Phone and OTP are required' });
     }
-
     const input = String(raw).trim();
-    const normalizedPhone = normalizePhone(input);
 
     if (String(otp).trim() !== FIXED_CLIENT_OTP) {
       logger.info(`Client OTP verification failed for ${input} — wrong OTP`);
@@ -209,60 +164,14 @@ export async function verifyOtp(req, res) {
     }
 
     // DEV BYPASS — remove before production
-    if (normalizedPhone === DEV_MOCK_PHONE) {
-      const mockPayload = {
-        type: 'CLIENT',
-        id: 'dev-client',
-        clientId: 'DEV001',
-        name: 'Dev Client',
-        phone: normalizedPhone,
-      };
-      logger.info(`[DEV] Client mock OTP verified for ${input}`);
-      return res.status(200).json({
-        success: true,
-        message: 'Login successful',
-        data: {
-          token: generateToken(mockPayload),
-          name: 'Dev Client',
-          clientId: 'DEV001',
-          email: 'dev@test.com',
-          phone: normalizedPhone,
-        },
-      });
+    if (normalizePhone(input) === DEV_MOCK_PHONE) {
+      return res.status(200).json({ success: true, message: 'Login successful', data: { token: DEV_LOGIN.token(), ...DEV_LOGIN.data } });
     }
 
-    const client = await findActiveClient(input);
+    const contact = await findActiveContact(input);
+    if (!contact) return notFound(res);
 
-    if (!client) {
-      return res.status(404).json({
-        success: false,
-        message: 'No active client account found for this number',
-      });
-    }
-
-    const payload = {
-      type: 'CLIENT',
-      id: client.id,
-      clientId: client.clientId,
-      name: client.companyName,
-      phone: client.contactNumber,
-    };
-
-    const token = generateToken(payload);
-
-    logger.info(`Client ${client.clientId} logged in via OTP`);
-
-    return res.status(200).json({
-      success: true,
-      message: 'Login successful',
-      data: {
-        token,
-        name: client.companyName,
-        clientId: client.clientId,
-        email: client.email,
-        phone: client.contactNumber,
-      },
-    });
+    return res.status(200).json({ success: true, message: 'Login successful', data: await issueLogin(contact, 'OTP') });
   } catch (error) {
     logger.error('Client verifyOtp error:', error);
     return res.status(500).json({ success: false, message: 'Something went wrong' });

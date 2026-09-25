@@ -108,8 +108,7 @@ try {
       productName: 'RMC',
       productGrade: 'M25',
       quantity: '30',
-      status: 'IN_PROGRESS',
-      deliveryStatus: 'IN_TRANSIT',
+      status: 'DISPATCHED',
     },
   });
   ids.order = order.id;

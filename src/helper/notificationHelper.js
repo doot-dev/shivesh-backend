@@ -2,6 +2,7 @@ import db from '../config/database.js';
 import logger from './logger.js';
 import { sendPushNotification } from './firebase.js';
 import { emitToAdmins } from '../realtime/socketServer.js';
+import { clientRecipientIds } from './clientAccess.js';
 
 /**
  * Every ADMIN notification is addressed to this single id rather than to an
@@ -56,10 +57,12 @@ export async function sendNotification({ targetType, targetId, title, message, t
   // 2b. Push to registered devices (CLIENT / FIELD_TECH)
 
   try {
-    const deviceTokens = await db.deviceToken.findMany({
-      where: { targetType, targetId: String(targetId) },
-      select: { token: true },
-    });
+    // docs/06: a client notification is pushed only to the contacts whose role
+    // (and project scope) lets them see it — bills never reach a site engineer.
+    const where = targetType === 'CLIENT'
+      ? { targetType: 'CLIENT_CONTACT', targetId: { in: await clientRecipientIds(targetId, { type, orderId }) } }
+      : { targetType, targetId: String(targetId) };
+    const deviceTokens = await db.deviceToken.findMany({ where, select: { token: true } });
 
     const tokens = deviceTokens.map((d) => d.token);
 

@@ -293,8 +293,8 @@ async function main() {
   const statusPlan = [
     ...Array(3).fill("NEW"),
     ...Array(3).fill("CONFIRMED"),
-    ...Array(3).fill("IN_PROGRESS"),
-    ...Array(3).fill("DELIVERED"),
+    ...Array(3).fill("DISPATCHED"),
+    ...Array(3).fill("REACHED"),
     ...Array(5).fill("COMPLETED"),
     ...Array(1).fill("CANCELLED"),
   ];
@@ -311,12 +311,6 @@ async function main() {
     const createdAt = daysAgo(dayOffset, 8 + Math.floor(Math.random() * 3), 0);
     dayOffset -= Math.floor(Math.random() * 2 + 1);
 
-    const deliveryStatus =
-      status === "COMPLETED" ? "COMPLETED" :
-      status === "DELIVERED" ? "DELIVERED" :
-      status === "IN_PROGRESS" ? "IN_TRANSIT" :
-      status === "CANCELLED" ? "ASSIGNED" : "ASSIGNED";
-
     const orderId = `ORD-${YEAR}-${String(orderSeq++).padStart(4, "0")}`;
     const chosenTechs = [...technicians].sort(() => Math.random() - 0.5).slice(0, 1 + Math.floor(Math.random() * 2));
 
@@ -332,7 +326,6 @@ async function main() {
         date: dateStr(createdAt),
         time: timeStr(8 + Math.floor(Math.random() * 4), 30),
         status,
-        deliveryStatus,
         createdAt,
         updatedAt: createdAt,
         vendors: {
@@ -350,8 +343,8 @@ async function main() {
     const truckCount = Math.max(1, Math.min(3, Math.round(Number(qty) / 15)));
     const tmStatus =
       status === "COMPLETED" ? "COMPLETED" :
-      status === "DELIVERED" ? "DELIVERED" :
-      status === "IN_PROGRESS" ? "IN_TRANSIT" : "ASSIGNED";
+      status === "REACHED" ? "DELIVERED" :
+      status === "DISPATCHED" ? "IN_TRANSIT" : "ASSIGNED";
 
     for (let i = 0; i < truckCount; i++) {
       const truckNo = `MH${4 + Math.floor(Math.random() * 40)}${["AB","BC","CD","DE"][Math.floor(Math.random()*4)]}${1000 + Math.floor(Math.random()*8999)}`;

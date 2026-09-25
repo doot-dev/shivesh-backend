@@ -1,7 +1,7 @@
 // Self-check for Phase 1A pure logic (no DB):  node scripts/verify_phase1.mjs
 import assert from 'node:assert/strict';
 import { billBlocker, acceptedQuantity } from '../src/helper/orderCompletion.js';
-import { orderStatusBlocked, deliveryStepBlocked } from '../src/helper/orderStatus.js';
+import { orderStatusBlocked } from '../src/helper/orderStatus.js';
 import { orderEditableUntil, isOrderLocked } from '../src/helper/updateWindow.js';
 import { resolveToDate, cubeTestStatus } from '../src/helper/cubeTest.js';
 import { quantityError } from '../src/helper/orderValidation.js';
@@ -19,14 +19,19 @@ assert.equal(acceptedQuantity([tm({ qty: 'six' })]), null);
 // W9 transitions
 assert.equal(orderStatusBlocked('NEW', 'CONFIRMED'), null);
 assert.match(orderStatusBlocked('COMPLETED', 'NEW'), /cannot move/);
-assert.match(orderStatusBlocked('CANCELLED', 'IN_PROGRESS'), /cannot move/);
-assert.equal(orderStatusBlocked('DELIVERED', 'DELIVERED'), null);
-assert.match(deliveryStepBlocked('CANCELLED', 'ASSIGNED', 'COMPLETED'), /cancelled/);
-assert.match(deliveryStepBlocked('IN_PROGRESS', 'REACHED', 'IN_TRANSIT'), /cannot move back/);
-assert.equal(deliveryStepBlocked('IN_PROGRESS', 'IN_TRANSIT', 'REACHED'), null);
+assert.match(orderStatusBlocked('CANCELLED', 'DISPATCHED'), /cannot move/);
+assert.equal(orderStatusBlocked('REACHED', 'REACHED'), null);
+// One status (2026-09-26): Delayed before Reached, cleared by the next step.
+assert.equal(orderStatusBlocked('CONFIRMED', 'DISPATCHED'), null);
+assert.equal(orderStatusBlocked('DISPATCHED', 'DELAYED'), null);
+assert.equal(orderStatusBlocked('DELAYED', 'REACHED'), null);
+assert.match(orderStatusBlocked('REACHED', 'DELAYED'), /cannot move/);
+assert.match(orderStatusBlocked('REACHED', 'DISPATCHED'), /cannot move/);
+assert.match(orderStatusBlocked('DISPATCHED', 'CANCELLED'), /cannot move/);
+assert.match(orderStatusBlocked('NEW', 'DISPATCHED'), /cannot move/);
 
 // W37 window: 30 days from the delivery date, end of day
-const day = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+const day = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return d.toLocaleDateString('en-CA'); }; // local YYYY-MM-DD (UTC broke 00:00–05:30 IST)
 assert.equal(isOrderLocked({ date: day(30), createdAt: new Date() }), false);
 assert.equal(isOrderLocked({ date: day(31), createdAt: new Date() }), true);
 assert.equal(orderEditableUntil({ date: '2026-01-01' }).getDate(), 31);

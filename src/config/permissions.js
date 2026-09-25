@@ -59,6 +59,14 @@ export const MODULES = [
     actions: CRUD,
   },
   {
+    // docs/06: the client app's roles (Owner, Site Engineer …), not panel roles.
+    key: 'clientRoles',
+    label: 'Client Roles',
+    path: '/client-roles',
+    description: 'Roles for client-app users and what each may do.',
+    actions: CRUD,
+  },
+  {
     key: 'products',
     label: 'Product',
     path: '/products',

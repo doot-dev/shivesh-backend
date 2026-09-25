@@ -1,4 +1,5 @@
 import db from '../../../config/database.js';
+import { orderProjectScope } from '../../../helper/clientAccess.js';
 import logger from '../../../helper/logger.js';
 import { sendNotification } from '../../../helper/notificationHelper.js';
 import {
@@ -189,6 +190,7 @@ export async function clientListAllCubeTests(req, res) {
       ...(where.order ?? {}),
       isDeleted: false,
       clientId: clientDbId,
+      ...orderProjectScope(req.clientAccess),
     };
 
     const cubeTests = await db.cubeTest.findMany({

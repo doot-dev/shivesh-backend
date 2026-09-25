@@ -5,6 +5,7 @@ import { buildInvoicePdf } from '../../../helper/invoicePdf.js';
 import { productByName } from '../../../helper/productUnits.js';
 import { invoiceOrderInclude } from '../../admin/controllers/billController.js';
 import logger from '../../../helper/logger.js';
+import { projectScope, orderProjectScope, contactMaySee } from '../../../helper/clientAccess.js';
 import {
   registerDeviceToken,
   removeDeviceToken,
@@ -26,11 +27,13 @@ export async function registerFcmToken(req, res) {
       return res.status(400).json({ success: false, message: 'token is required' });
     }
 
+    // docs/06: pushes go per person, so each phone only gets what its role allows.
+    const contactId = req.clientAccess.contact?.id;
     const { deviceCount } = await registerDeviceToken({
       token,
       platform,
-      targetType: 'CLIENT',
-      targetId: clientDbId,
+      targetType: contactId ? 'CLIENT_CONTACT' : 'CLIENT',
+      targetId: contactId ?? clientDbId,
     });
 
     return res.status(200).json({
@@ -104,9 +107,10 @@ export async function getProjects(req, res) {
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
+    const where = { clientId: clientDbId, isDeleted: false, status: 'ACTIVE', ...projectScope(req.clientAccess) };
     const [projects, total] = await Promise.all([
       db.project.findMany({
-        where: { clientId: clientDbId, isDeleted: false, status: 'ACTIVE' },
+        where,
         select: {
           id: true,
           projectId: true,
@@ -121,7 +125,7 @@ export async function getProjects(req, res) {
         skip: (pageNum - 1) * limitNum,
         take: limitNum,
       }),
-      db.project.count({ where: { clientId: clientDbId, isDeleted: false, status: 'ACTIVE' } }),
+      db.project.count({ where }),
     ]);
 
     return res.status(200).json({ success: true, data: projects, total, page: pageNum });
@@ -137,9 +141,9 @@ export async function getProjectProducts(req, res) {
     const clientDbId = req.user.data.id;
     const { projectId } = req.params;
 
-    // Verify project belongs to this client
+    // Verify project belongs to this client (and to this contact's projects)
     const project = await db.project.findFirst({
-      where: { projectId, clientId: clientDbId, isDeleted: false },
+      where: { projectId, clientId: clientDbId, isDeleted: false, ...projectScope(req.clientAccess) },
       select: { id: true },
     });
 
@@ -223,7 +227,7 @@ export async function getProjectDetail(req, res) {
     const { projectId } = req.params;
 
     const project = await db.project.findFirst({
-      where: { projectId, clientId: clientDbId, isDeleted: false },
+      where: { projectId, clientId: clientDbId, isDeleted: false, ...projectScope(req.clientAccess) },
       select: {
         id: true,
         projectId: true,
@@ -260,14 +264,20 @@ export async function getNotifications(req, res) {
     const pageNum = parseInt(page);
     const limitNum = parseInt(limit);
 
-    const notifications = await db.notification.findMany({
+    // ponytail: one feed per client, filtered per contact after the page is read,
+    // so a scoped contact can get a short page. Store per-contact rows if that bites.
+    const rows = await db.notification.findMany({
       where: { targetType: 'CLIENT', targetId: clientDbId },
       orderBy: { createdAt: 'desc' },
       skip: (pageNum - 1) * limitNum,
       take: limitNum,
+      include: { order: { select: { projectId: true, placedByContactId: true } } },
     });
+    const data = rows
+      .filter((n) => contactMaySee(req.clientAccess, { type: n.type, order: n.order }))
+      .map(({ order, ...n }) => n);
 
-    return res.status(200).json({ success: true, data: notifications });
+    return res.status(200).json({ success: true, data });
   } catch (error) {
     logger.error('getClientNotifications error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -316,7 +326,7 @@ export async function listBills(req, res) {
       where: {
         isDeleted: false,
         status: { in: CLIENT_BILL_STATUSES },
-        order: { clientId: req.user.data.id, isDeleted: false, ...(projectId && { project: { projectId } }) },
+        order: { clientId: req.user.data.id, isDeleted: false, ...orderProjectScope(req.clientAccess), ...(projectId && { project: { projectId } }) },
       },
       orderBy: { issueDate: 'desc' },
       select: {
@@ -343,7 +353,7 @@ export async function listBills(req, res) {
 export async function downloadBillInvoice(req, res) {
   try {
     const bill = await db.bill.findFirst({
-      where: { billNo: req.params.billNo, isDeleted: false, status: { in: CLIENT_BILL_STATUSES }, order: { clientId: req.user.data.id } },
+      where: { billNo: req.params.billNo, isDeleted: false, status: { in: CLIENT_BILL_STATUSES }, order: { clientId: req.user.data.id, ...orderProjectScope(req.clientAccess) } },
     });
     if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
     const order = await db.order.findFirst({ where: { id: bill.orderId }, include: invoiceOrderInclude() });

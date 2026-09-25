@@ -25,7 +25,7 @@ export async function getStats(req, res) {
       db.order.count({ where: { isDeleted: false } }),
       db.order.count({ where: { isDeleted: false, status: 'NEW' } }),
       // 'ACTIVE' is not an OrderStatus — Prisma rejected it and the whole endpoint 500'd.
-      db.order.count({ where: { isDeleted: false, status: { in: ['CONFIRMED', 'IN_PROGRESS', 'DELIVERED'] } } }),
+      db.order.count({ where: { isDeleted: false, status: { in: ['CONFIRMED', 'DELAYED', 'DISPATCHED', 'REACHED'] } } }),
       db.order.count({ where: { isDeleted: false, status: 'COMPLETED' } }),
       db.order.count({ where: { isDeleted: false, status: 'CANCELLED' } }),
       db.user.count({ where: { isDeleted: false } }),

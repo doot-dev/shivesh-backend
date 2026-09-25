@@ -1,4 +1,5 @@
 import db from '../../../config/database.js';
+import { orderProjectScope } from '../../../helper/clientAccess.js';
 import logger from '../../../helper/logger.js';
 import { sendNotification, notifyAdmins } from '../../../helper/notificationHelper.js';
 import { createActivityLog } from '../../../helper/activityLogger.js';
@@ -253,8 +254,9 @@ export async function markTmReached(req, res) {
       where: { id: tmId },
       data: { status: 'REACHED', arrivalTime: tm.arrivalTime || arrivalTime },
     });
-    if (['ASSIGNED', 'IN_TRANSIT'].includes(order.deliveryStatus)) {
-      await db.order.update({ where: { id: order.id }, data: { deliveryStatus: 'REACHED', status: order.status === 'CONFIRMED' ? 'IN_PROGRESS' : order.status } });
+    // The first truck at site moves the order to REACHED (also clears DELAYED).
+    if (['CONFIRMED', 'DELAYED', 'DISPATCHED'].includes(order.status)) {
+      await db.order.update({ where: { id: order.id }, data: { status: 'REACHED' } });
     }
 
     await createActivityLog({
@@ -301,7 +303,7 @@ export async function clientRejectTm(req, res) {
       return res.status(400).json({ success: false, message: 'reason is required' });
     }
 
-    const order = await db.order.findFirst({ where: { orderId, clientId: clientDbId, isDeleted: false } });
+    const order = await db.order.findFirst({ where: { orderId, clientId: clientDbId, isDeleted: false, ...orderProjectScope(req.clientAccess) } });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     if (await rejectIfLocked(order, req, res)) return;
@@ -328,7 +330,7 @@ export async function clientRejectTm(req, res) {
     // there yet (W31 adds actorType in 009). The admin bell below is the trail.
     await notifyAdmins({
       title: 'Truck rejected at site',
-      message: `Client rejected ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
+      message: `${req.user.data.contactName || 'Client'} rejected ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
       type: 'STATUS_UPDATED',
       relatedId: order.id,
       orderId: order.id,
@@ -338,7 +340,7 @@ export async function clientRejectTm(req, res) {
       targetType: 'FIELD_TECH',
       targetId: String(x.userId),
       title: 'Truck rejected at site',
-      message: `Client rejected ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
+      message: `${req.user.data.contactName || 'Client'} rejected ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
       type: 'STATUS_UPDATED',
       relatedId: order.id,
       orderId: order.id,

@@ -268,6 +268,69 @@ model Client {
   creditDays    Int?
   creditExtras  ClientCreditExtra[]
   payments      Payment[]
+  contacts      ClientContact[]
+}
+
+/// Client-side role (Owner, Site Engineer …) — separate from the panel's Role.
+/// Shared by every client (Q2). Owner is `isSystem`: always all permissions.
+model ClientRole {
+  id          Int                    @id @default(autoincrement())
+  name        String                 @unique
+  description String?                @db.Text
+  isSystem    Boolean                @default(false)
+  isActive    Boolean                @default(true)
+  isDeleted   Boolean                @default(false)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  permissions ClientRolePermission[]
+  contacts    ClientContact[]
+}
+
+model ClientRolePermission {
+  id         Int        @id @default(autoincrement())
+  roleId     Int
+  permission String
+  role       ClientRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permission])
+}
+
+/// One person who logs in to the client app with their own phone.
+model ClientContact {
+  id            String                 @id @default(cuid())
+  clientId      String
+  name          String
+  phone         String
+  designation   String?
+  roleId        Int
+  /// false → only the projects in ClientContactProject (Q3).
+  allProjects   Boolean                @default(true)
+  isActive      Boolean                @default(true)
+  isDeleted     Boolean                @default(false)
+  lastLoginAt   DateTime?
+  /// USER (office) | CLIENT_CONTACT (owner in the app) | SYSTEM (backfill).
+  createdByType String
+  createdById   String
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  client        Client                 @relation(fields: [clientId], references: [id])
+  role          ClientRole             @relation(fields: [roleId], references: [id])
+  projects      ClientContactProject[]
+  orders        Order[]
+
+  @@unique([clientId, phone])
+  @@index([phone])
+}
+
+model ClientContactProject {
+  id        String        @id @default(cuid())
+  contactId String
+  projectId String
+  contact   ClientContact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  project   Project       @relation(fields: [projectId], references: [id])
+
+  @@unique([contactId, projectId])
+  @@index([projectId])
 }
 
 /// W35: one-time extra credit on top of N. No end date (D20); drawn only above
@@ -374,28 +437,29 @@ model DeviceToken {
 }
 
 model Project {
-  id                     String           @id @default(cuid())
-  projectId              String           @unique
+  id                     String                 @id @default(cuid())
+  projectId              String                 @unique
   projectName            String
   clientId               String
   siteName               String
-  projectLocation        String           @db.Text
+  projectLocation        String                 @db.Text
   projectManager         String?
-  status                 ProjectStatus    @default(ACTIVE)
+  status                 ProjectStatus          @default(ACTIVE)
   commissionPersonName   String?
   commissionAmountPerM3  Float?
   creditAmount           Float?
   creditResetPeriodDays  Int?
-  createdAt              DateTime         @default(now())
-  updatedAt              DateTime         @updatedAt
-  isDeleted              Boolean          @default(false)
-  address                String?          @db.Text
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  isDeleted              Boolean                @default(false)
+  address                String?                @db.Text
   commissionPersonMobile String?
   latitude               Float?
   longitude              Float?
   orders                 Order[]
-  client                 Client           @relation(fields: [clientId], references: [id])
+  client                 Client                 @relation(fields: [clientId], references: [id])
   projectProducts        ProjectProduct[]
+  contactScopes          ClientContactProject[]
 
   @@index([clientId])
 }
@@ -462,7 +526,6 @@ model Order {
   date               String?
   time               String?
   status             OrderStatus       @default(NEW)
-  deliveryStatus     DeliveryStatus    @default(ASSIGNED)
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   isDeleted          Boolean           @default(false)
@@ -488,9 +551,13 @@ model Order {
   vendors            OrderVendor[]
   tmDetails          TmDetail[]
   cubeTests          CubeTest[]
+  /// Who placed it from the client app. Null for office-placed orders.
+  placedByContactId  String?
+  placedBy           ClientContact?    @relation(fields: [placedByContactId], references: [id])
 
   @@index([projectId])
   @@index([clientId])
+  @@index([placedByContactId])
 }
 
 model CubeTest {
@@ -657,15 +724,19 @@ enum VendorPriority {
   LOW
 }
 
+/// One status per order (2026-09-26): NEW → CONFIRMED → DISPATCHED → REACHED →
+/// COMPLETED, with DELAYED before REACHED and CANCELLED. See helper/orderStatus.js.
 enum OrderStatus {
   NEW
   CONFIRMED
-  IN_PROGRESS
-  DELIVERED
+  DELAYED
+  DISPATCHED
+  REACHED
   COMPLETED
   CANCELLED
 }
 
+/// Per-truck step (TmDetail.status). Orders no longer have a delivery status.
 enum DeliveryStatus {
   ASSIGNED
   IN_TRANSIT

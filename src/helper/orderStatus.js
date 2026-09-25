@@ -1,40 +1,38 @@
 /**
- * Order status rules (W9) — one table both the panel and the field app obey.
- * Before this, any status could follow any other, and a technician could
- * complete a cancelled order.
+ * Order status rules — one table the panel, the field app and the client app
+ * all obey (W9).
+ *
+ * One status per order (user decision 2026-09-26); it replaced the old
+ * status + deliveryStatus pair:
+ *
+ *   NEW → CONFIRMED → DISPATCHED → REACHED → COMPLETED
+ *
+ * DELAYED can be set any time before REACHED; the next step clears it.
+ * CANCELLED only before the order is dispatched (the office decides after).
+ * A truck keeps its own status on TmDetail — that is per truck, not per order.
  */
+export const ORDER_STATUSES = ['NEW', 'CONFIRMED', 'DELAYED', 'DISPATCHED', 'REACHED', 'COMPLETED', 'CANCELLED'];
+export const ACTIVE_STATUSES = ['NEW', 'CONFIRMED', 'DELAYED', 'DISPATCHED', 'REACHED'];
+export const PAST_STATUSES = ['COMPLETED', 'CANCELLED'];
+
 export const ORDER_TRANSITIONS = {
   NEW: ['CONFIRMED', 'CANCELLED'],
-  CONFIRMED: ['IN_PROGRESS', 'CANCELLED'],
-  IN_PROGRESS: ['DELIVERED'],
-  DELIVERED: ['COMPLETED'],
+  CONFIRMED: ['DELAYED', 'DISPATCHED', 'CANCELLED'],
+  DELAYED: ['DISPATCHED', 'REACHED', 'CANCELLED'],
+  DISPATCHED: ['DELAYED', 'REACHED'],
+  REACHED: ['COMPLETED'],
   COMPLETED: [],
   CANCELLED: [],
 };
 
-/** Truck/order delivery steps, in order. The field app may only move forward. */
-export const DELIVERY_STEPS = ['ASSIGNED', 'IN_TRANSIT', 'REACHED', 'DELIVERED', 'COMPLETED'];
+/** Statuses the field technician may set from the app. */
+export const FIELD_STATUSES = ['DISPATCHED', 'DELAYED', 'REACHED', 'COMPLETED'];
 
-/** Order status each delivery step implies (field app). */
-export const DELIVERY_TO_ORDER_STATUS = {
-  ASSIGNED: 'CONFIRMED',
-  IN_TRANSIT: 'IN_PROGRESS',
-  REACHED: 'IN_PROGRESS',
-  DELIVERED: 'DELIVERED',
-  COMPLETED: 'COMPLETED',
-};
+export const isActiveStatus = (status) => ACTIVE_STATUSES.includes(status);
 
 /** Why `from` → `to` is not allowed, or null. Same status is a no-op, allowed. */
 export function orderStatusBlocked(from, to) {
   if (!to || from === to) return null;
   if ((ORDER_TRANSITIONS[from] || []).includes(to)) return null;
   return `an order that is ${from} cannot move to ${to}`;
-}
-
-/** Why a delivery step change is not allowed, or null. */
-export function deliveryStepBlocked(orderStatus, from, to) {
-  if (orderStatus === 'CANCELLED') return 'the order is cancelled';
-  if (from === to) return null;
-  if (DELIVERY_STEPS.indexOf(to) < DELIVERY_STEPS.indexOf(from)) return `cannot move back from ${from} to ${to}`;
-  return null;
 }

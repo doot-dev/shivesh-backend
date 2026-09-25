@@ -1,7 +1,6 @@
 import { decrypt } from '../../../helper/security.js';
 import jsonwebtoken from 'jsonwebtoken';
-import db from '../../../config/database.js';
-import { requireKyc } from '../controllers/clientAuthController.js';
+import { loadClientAccess } from '../../../helper/clientAccess.js';
 const { verify } = jsonwebtoken;
 
 function makeVerifier(requiredType) {
@@ -32,25 +31,21 @@ function makeVerifier(requiredType) {
           return res.status(403).json({ success: false, message: 'Access denied' });
         }
         req.user = decoded;
-        if (requiredType !== 'CLIENT' || decoded.data.id === 'dev-client') return next();
+        if (requiredType !== 'CLIENT') return next();
 
-        // Tokens last 30 days, so re-check the client on every request: a client
-        // the office deactivates or un-verifies loses access immediately.
-        db.client
-          .findFirst({
-            where: {
-              id: decoded.data.id,
-              isDeleted: false,
-              status: 'ACTIVE',
-              ...(requireKyc() && { kycStatus: 'VERIFIED' }),
-            },
-            select: { id: true },
+        // Tokens last 30 days, so re-check on every request: a contact the office
+        // (or their owner) deactivates, a changed role, or a client that is no
+        // longer active or verified takes effect immediately (docs/06).
+        loadClientAccess(decoded.data)
+          .then((access) => {
+            if (!access) {
+              return res.status(401).json({ success: false, message: 'Your access has been removed or is not active' });
+            }
+            req.clientAccess = access;
+            // Comments and audit rows name the person, not the company.
+            if (access.contact) req.user.data.contactName = access.contact.name;
+            return next();
           })
-          .then((client) =>
-            client
-              ? next()
-              : res.status(401).json({ success: false, message: 'Account not active or not verified' }),
-          )
           .catch(next);
       });
     } catch (error) {

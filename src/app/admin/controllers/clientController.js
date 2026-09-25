@@ -1,4 +1,5 @@
 import { validatorFunction } from "../../../helper/validate.js";
+import { syncOwnerContact } from '../../../helper/clientContacts.js';
 import {
   createClientValidation,
   updateClientValidation,
@@ -182,7 +183,8 @@ export const createClient = async (req, res) => {
       }
       throw createError;
     }
-    logger.info("req.user", req);
+    // docs/06: the owner's number becomes the Owner contact that logs in to the app.
+    await syncOwnerContact(client);
     // Log activity
     await createActivityLog({
       title: "Client created",
@@ -332,6 +334,8 @@ export const updateClient = async (req, res) => {
         address,
       },
     });
+
+    await syncOwnerContact(updatedClient, existingClient.contactNumber);
 
     // If new KYC documents are provided, delete old ones and create new
     if (kycDocuments.length > 0) {
