@@ -10,6 +10,8 @@ module.exports = {
         NODE_ENV: 'development',
         // Bills, due dates and financial years must follow IST, not the server clock (G3).
         TZ: 'Asia/Kolkata',
+        // "Book tomorrow's order" reminder goes out at 2 pm IST.
+        ORDER_REMINDER_HOUR: 14,
         PORT: 3001,
         LOG_LEVEL: 'debug',
         ENABLE_FILE_LOGGING: 'false'

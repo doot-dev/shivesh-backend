@@ -124,7 +124,7 @@ export function startOrderReminderJob() {
     return;
   }
 
-  const hour = Number(process.env.ORDER_REMINDER_HOUR ?? 18);
+  const hour = Number(process.env.ORDER_REMINDER_HOUR ?? 14);
   const minute = Number(process.env.ORDER_REMINDER_MINUTE ?? 0);
 
   if (Number.isNaN(hour) || hour < 0 || hour > 23) {
