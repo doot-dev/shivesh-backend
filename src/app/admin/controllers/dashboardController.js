@@ -72,10 +72,27 @@ export async function getStats(req, res) {
       awaitingChallans: completedUnbilled,
     };
 
+    // Billed vs collected for the last 6 calendar months, oldest first (dashboard chart).
+    const trendStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const [trendBills, trendPays] = await Promise.all([
+      db.bill.findMany({ where: { isDeleted: false, status: { not: 'CANCELLED' }, issueDate: { gte: trendStart } }, select: { amount: true, issueDate: true } }),
+      db.payment.findMany({ where: { status: 'ACTIVE', receivedOn: { gte: trendStart } }, select: { amount: true, receivedOn: true } }),
+    ]);
+    const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const trend = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(now.getFullYear(), now.getMonth() - 5 + i, 1);
+      return { month: monthKey(d), billed: 0, collected: 0 };
+    });
+    const byMonth = Object.fromEntries(trend.map((t) => [t.month, t]));
+    for (const b of trendBills) { const t = byMonth[monthKey(new Date(b.issueDate))]; if (t) t.billed += b.amount; }
+    for (const p of trendPays) { const t = byMonth[monthKey(new Date(p.receivedOn))]; if (t) t.collected += p.amount; }
+    for (const t of trend) { t.billed = r2(t.billed); t.collected = r2(t.collected); }
+
     return res.status(200).json({
       success: true,
       data: {
         money,
+        trend,
         clients: { total: totalClients, active: activeClients },
         projects: { total: totalProjects, active: activeProjects },
         orders: {
