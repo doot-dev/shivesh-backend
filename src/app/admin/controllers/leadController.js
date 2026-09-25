@@ -75,6 +75,7 @@ export const getLeads = async (req, res) => {
             skip,
             take: length,
             orderBy: { createdAt: 'desc' },
+            include: { assignedTo: { select: { id: true, name: true } } },
         });
 
         return res.status(200).json({

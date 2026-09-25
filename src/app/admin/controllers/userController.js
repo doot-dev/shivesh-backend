@@ -1,7 +1,8 @@
 import { validatorFunction } from "../../../helper/validate.js";
 import { resetPasswordValidation, userUpdateValidation, userValidation } from "../validations/userValidation.js";
 import db from "../../../config/database.js";
-import { decrypt, encrypt } from "../../../helper/security.js";
+import { encrypt } from "../../../helper/security.js";
+import { verifyPassword } from "../../../helper/passwordHelper.js";
 import logger from "../../../helper/logger.js";
 import { ungrantableRole } from "../../../helper/accessControl.js";
 
@@ -211,7 +212,7 @@ export async function getUser(req, res) {
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
-        user.password = decrypt(user.password);
+        delete user.password; // never send a password back to the panel
         return res.status(200).json({ success: true, message: "User retrieved successfully", data: user });
     } catch (error) {
         logger.error('getUser error:', error);
@@ -367,8 +368,9 @@ export async function resetPassword(req, res) {
         if (!user) {
             return res.status(404).json({ success: false, message: "User not found", data: null });
         }
-        const oldPasswordChecking = decrypt(user.password);
-        if (oldPasswordChecking !== oldPassword) {
+        // The route already requires users.update, so an admin can set a new
+        // password without knowing the old one. If an old one is sent, check it.
+        if (oldPassword && !verifyPassword(oldPassword, user.password)) {
             return res.status(400).json({ success: false, message: "Old password does not match", data: null });
         }
         const hashedNewPassword = encrypt(newPassword);

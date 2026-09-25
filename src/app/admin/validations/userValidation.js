@@ -20,6 +20,5 @@ export const userUpdateValidation = {
 
 export const resetPasswordValidation = {
     id: 'required|integer',
-    oldPassword: 'required',
     newPassword: 'required'
 }
