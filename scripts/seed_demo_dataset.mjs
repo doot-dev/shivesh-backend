@@ -10,7 +10,8 @@
 // age into "overdue" the way they would have naturally.
 //
 //   node scripts/seed_demo_dataset.mjs --reset      # hide old orders/bills first (recommended)
-//   BASE=http://localhost:3001 CHALLAN_IMG=/tmp/demo-challan.jpg node scripts/seed_demo_dataset.mjs --reset
+//   TZ=Asia/Kolkata BASE=http://localhost:3001 CHALLAN_IMG=/tmp/demo-challan.jpg node scripts/seed_demo_dataset.mjs --reset
+//   (TZ must match the backend's, or "today" is off by a day around midnight IST)
 //
 // --reset soft-deletes (isDeleted) every existing order, bill and cube test,
 // reverses active payments and clears notifications. Nothing is hard-deleted:
@@ -23,6 +24,7 @@ const CHALLAN_IMG = process.env.CHALLAN_IMG || '/tmp/demo-challan.jpg';
 const ADMIN = { userName: process.env.ADMIN_USER || 'Shivesh', password: process.env.ADMIN_PASS || '123456' };
 const OTP = '1111';
 const RESET = process.argv.includes('--reset');
+if (!process.env.TZ) process.env.TZ = 'Asia/Kolkata'; // dates are IST business days, like the backend
 
 const ymd = (d) => d.toLocaleDateString('en-CA'); // local YYYY-MM-DD
 const today = new Date();
@@ -195,7 +197,7 @@ async function run() {
         if (s.cube) {
           for (const [period, cubes] of s.cube) {
             const fd = new FormData();
-            fd.append('castingDate', s.castOn); fd.append('quantity', cubes); fd.append('period', period);
+            fd.append('castingDate', body.date); fd.append('quantity', cubes); fd.append('period', period);
             await A('POST', `/orders/${orderId}/cube-test`, { form: fd });
           }
           s.cube = null;
@@ -226,7 +228,12 @@ async function run() {
     const at = addDays(s.date, 0); at.setHours(Number(s.time.slice(0, 2)), Number(s.time.slice(3)));
     await db.order.update({ where: { id: order.id }, data: { date: s.date, createdAt: addDays(s.date, -2) } });
     await db.tmDetail.updateMany({ where: { orderId: order.id }, data: { createdAt: at, deliveredAt: at } });
-    await db.cubeTest.updateMany({ where: { orderId: order.id }, data: { createdAt: at } });
+    const PERIOD_DAYS = { SEVEN_DAYS: 7, FIFTEEN_DAYS: 15, TWENTYEIGHT_DAYS: 28 };
+    for (const ct of await db.cubeTest.findMany({ where: { orderId: order.id, isDeleted: false } })) {
+      const cast = addDays(s.castOn || s.date, 0);
+      await db.cubeTest.update({ where: { id: ct.id }, data: { createdAt: at, castingDate: cast, fromDate: cast,
+        toDate: addDays(s.castOn || s.date, PERIOD_DAYS[ct.period] ?? Math.round((ct.toDate - ct.fromDate) / 864e5)) } });
+    }
     if (order.bill) {
       const issue = addDays(s.date, 1);
       const due = addDays(s.date, 1 + (order.client.creditDays || 30));
