@@ -944,7 +944,7 @@ export const updateTmApproval = async (req, res) => {
   try {
     const { billNo, tmId } = req.params;
     const { err, status: validationStatus } = await validatorFunction(
-      { ...req.body, billNo, tmId },
+      { ...req.body, tmId },
       updateTmApprovalValidation,
     );
 
