@@ -186,6 +186,9 @@ async function buildBillPayload(bill, order) {
       })),
       date: order.date,
       rate: bill.rate,
+      concreteAmount: Math.round(bill.quantity * bill.rate * 100) / 100,
+      extras: order.extras ?? [],
+      extrasAmount: bill.extrasAmount ?? 0,
       amount: bill.amount,
     },
     fieldTechnicians: order.technicians.map((t) => ({

@@ -84,6 +84,7 @@ function buildTechnicianInclude() {
 function buildInclude() {
   return {
     extras: extrasSelect,
+    bill: { select: { billNo: true, status: true, amount: true, extrasAmount: true, isDeleted: true } },
     project: {
       select: {
         projectId: true,
