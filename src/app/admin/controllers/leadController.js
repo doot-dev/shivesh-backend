@@ -3,6 +3,7 @@ import { leadValidation } from "../validations/leadValidation.js";
 import db from "../../../config/database.js";
 import logger from "../../../helper/logger.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
+import { leadFileUrl } from "../../../config/leadUploadConfig.js";
 
 export const upsertLead = async (req, res) => {
     const { err, status } = await validatorFunction(req.body, leadValidation);
@@ -98,53 +99,33 @@ export const updateLead = async (req, res) => {
             return res.status(404).json({ success: false, message: "Lead not found" });
         }
 
+        // Only what was sent: an absent date used to become an Invalid Date.
         const updatedLead = await db.lead.update({
             where: { id: leadId },
-            data: { date: new Date(date), time, title, description, status, assignedToId },
+            data: {
+                ...(date !== undefined && { date: date ? new Date(date) : null }),
+                ...(time !== undefined && { time }),
+                ...(title !== undefined && { title }),
+                ...(description !== undefined && { description }),
+                ...(status !== undefined && { status }),
+                ...(assignedToId !== undefined && { assignedToId: assignedToId ? Number(assignedToId) : null }),
+            },
         });
 
-        // 🧠 Detect and log changes
-        if (status && status !== lead.status) {
-            await createActivityLog({
-                title: `Lead status changed to ${status}`,
-                description: `Status updated from ${lead.status} → ${status}.`,
-                entityType: "LEAD",
-                entityId: leadId,
-                action: "STATUS_CHANGED",
-                createdById: req.user.data.id || null,
-            });
+        // Status and owner changes land in the lead's chat as event lines (2026-09-28).
+        const events = [];
+        if (status && status !== lead.status) events.push(`Status changed to ${status.replace("_", " ").toLowerCase()}`);
+        if (assignedToId !== undefined && Number(assignedToId) !== lead.assignedToId) {
+            const who = assignedToId ? (await db.user.findUnique({ where: { id: Number(assignedToId) }, select: { name: true } }))?.name : null;
+            events.push(who ? `Assigned to ${who}` : "Unassigned");
         }
-
-        if (assignedToId && assignedToId !== lead.assignedToId) {
-            const assignedUser = await db.user.findUnique({ where: { id: assignedToId } });
-            await createActivityLog({
-                title: `Lead assigned to ${assignedUser?.name || "User"}`,
-                description: `Lead assigned to ${assignedUser?.name || "User"}.`,
-                entityType: "LEAD",
-                entityId: leadId,
-                action: "ASSIGNED",
-                createdById: req.user.id || null,
-            });
+        for (const text of events) {
+            await db.leadMessage.create({ data: { leadId, authorId: Number(req.user.data.id), kind: "EVENT", text } });
         }
 
         return res.status(200).json({ success: true, data: updatedLead });
     } catch (error) {
         logger.error("Error updating lead:", error);
-        return res.status(500).json({ success: false, message: "Internal Server Error" });
-    }
-};
-export const getActivityLogs = async (req, res) => {
-    try {
-        
-        const activityLogs = await db.activity.findMany({
-            orderBy: { createdAt: 'desc' },
-            include: {
-                createdBy: { select: { id: true, name: true, } },
-            }
-        });
-        return res.status(200).json({ success: true, data: activityLogs });
-    } catch (error) {
-        logger.error("Error fetching activity logs:", error);
         return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
@@ -155,14 +136,6 @@ export const getLead = async (req, res) => {
         if (!lead) {
             return res.status(404).json({ success: false, message: "Lead not found" });
         }
-        const activityLogs = await db.activity.findMany({
-            where: { entityType: "LEAD", entityId: leadId },
-            orderBy: { createdAt: 'desc' },
-            include: {
-                createdBy: { select: { id: true, name: true, } },
-            }
-        });
-        lead.activityLogs = activityLogs;
         return res.status(200).json({ success: true, data: lead });
     } catch (error) {
         logger.error("Error fetching lead:", error);
@@ -183,6 +156,61 @@ export const deleteLead = async (req, res) => {
         return res.status(200).json({ success: true, message: "Lead deleted successfully" });
     } catch (error) {
         logger.error("Error deleting lead:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+// ─── Lead chat (2026-09-28): notes, voice notes and site photos ───────────────
+
+const messageSelect = {
+  id: true, kind: true, text: true, fileUrl: true, mimeType: true, durationSec: true, createdAt: true,
+  author: { select: { id: true, name: true } },
+};
+
+/** GET /leads/:leadId/messages — the whole thread, oldest first. */
+export const listLeadMessages = async (req, res) => {
+    try {
+        const lead = await db.lead.findUnique({ where: { id: req.params.leadId }, select: { id: true } });
+        if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+        const data = await db.leadMessage.findMany({
+            where: { leadId: lead.id }, orderBy: { createdAt: "asc" }, select: messageSelect,
+        });
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error("listLeadMessages error:", error);
+        return res.status(500).json({ success: false, message: "Internal Server Error" });
+    }
+};
+
+/**
+ * POST /leads/:leadId/messages — multipart: `text`, and optionally one `file`
+ * (a photo or a voice note, with `durationSec` for voice).
+ */
+export const postLeadMessage = async (req, res) => {
+    try {
+        const lead = await db.lead.findUnique({ where: { id: req.params.leadId }, select: { id: true } });
+        if (!lead) return res.status(404).json({ success: false, message: "Lead not found" });
+        const text = String(req.body.text ?? "").trim() || null;
+        const file = req.file;
+        if (!text && !file) return res.status(400).json({ success: false, message: "Write something or attach a photo / voice note" });
+        const kind = !file ? "TEXT" : file.mimetype.startsWith("audio/") ? "VOICE" : "PHOTO";
+        const data = await db.leadMessage.create({
+            data: {
+                leadId: lead.id,
+                authorId: Number(req.user.data.id),
+                kind,
+                text,
+                ...(file && {
+                    fileUrl: leadFileUrl(lead.id, file.filename),
+                    mimeType: file.mimetype,
+                    durationSec: Number.parseInt(req.body.durationSec, 10) || null,
+                }),
+            },
+            select: messageSelect,
+        });
+        return res.status(201).json({ success: true, data });
+    } catch (error) {
+        logger.error("postLeadMessage error:", error);
         return res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };

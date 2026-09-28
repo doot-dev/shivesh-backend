@@ -36,6 +36,7 @@ model User {
   assignedLeads       Lead[]              @relation("LeadAssignedTo")
   assignedOrders      OrderTechnician[]   @relation("OrderTechnicianUser")
   projectAssignments  ProjectTechnician[]
+  leadMessages        LeadMessage[]       @relation("LeadMessageAuthor")
   roleRef             Role?               @relation("UserRoleRef", fields: [roleId], references: [id])
   permissionOverrides UserPermission[]    @relation("UserPermissionOverrides")
 
@@ -189,25 +190,45 @@ model VendorHandler {
 }
 
 model Lead {
-  id            String     @id @default(cuid())
+  id            String        @id @default(cuid())
   companyName   String
   contactPerson String
   email         String?
   phone         String?
   address       String?
-  source        Source     @default(REFERRAL)
-  status        LeadStatus @default(NEW)
+  source        Source        @default(REFERRAL)
+  status        LeadStatus    @default(NEW)
   assignedToId  Int?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
-  requirement   String?    @db.Text
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  requirement   String?       @db.Text
   date          DateTime?
-  description   String?    @db.Text
+  description   String?       @db.Text
   time          String?
   title         String?
-  assignedTo    User?      @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  assignedTo    User?         @relation("LeadAssignedTo", fields: [assignedToId], references: [id])
+  messages      LeadMessage[]
 
   @@index([assignedToId], map: "Lead_assignedToId_fkey")
+}
+
+/// The lead's follow-up chat (2026-09-28): a note, a voice note or a site photo
+/// from anyone on the team working the lead. Replaces the old activity log.
+model LeadMessage {
+  id          String   @id @default(cuid())
+  leadId      String
+  authorId    Int
+  kind        String   @db.VarChar(10) /// TEXT | VOICE | PHOTO | EVENT (status / owner change)
+  text        String?  @db.Text
+  fileUrl     String?  @db.VarChar(512)
+  mimeType    String?  @db.VarChar(100)
+  durationSec Int?
+  createdAt   DateTime @default(now())
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  author      User     @relation("LeadMessageAuthor", fields: [authorId], references: [id])
+
+  @@index([leadId, createdAt])
+  @@index([authorId])
 }
 
 model Activity {

@@ -23,7 +23,7 @@ export function requireUploadAuth(req, res, next) {
   }
 
   // Panel tokens carry no `type`; app tokens are CLIENT or FIELD_TECH.
-  if (req.path.startsWith('/kyc/') && decoded?.data?.type) {
+  if ((req.path.startsWith('/kyc/') || req.path.startsWith('/leads/')) && decoded?.data?.type) {
     return res.status(403).json({ success: false, message: 'Not allowed' });
   }
   next();
