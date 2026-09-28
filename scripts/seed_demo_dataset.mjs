@@ -10,6 +10,7 @@
 // age into "overdue" the way they would have naturally.
 //
 //   node scripts/seed_demo_dataset.mjs --reset      # hide old orders/bills first (recommended)
+//   node scripts/seed_demo_dataset.mjs --more       # add PLAN_MORE on top (unpaid bills), no reset
 //   TZ=Asia/Kolkata BASE=http://localhost:3001 CHALLAN_IMG=/tmp/demo-challan.jpg node scripts/seed_demo_dataset.mjs --reset
 //   (TZ must match the backend's, or "today" is off by a day around midnight IST)
 //
@@ -113,6 +114,28 @@ const PLAN = [
     trucks: [[5, 'accept'], [5, 'accept'], [5, 'accept']] },
 ];
 
+// --more (2026-09-28): extra completed orders on top of the demo, no reset.
+// All bills are left unpaid: Sahyadri reaches ~₹2L billed this month, the other
+// projects get pending (and one overdue) bills.
+const PLAN_MORE = [
+  { key: 'S7', client: 'CL-2026-0010', project: 'PRJ-2026-0024', p: 'RMC', g: 'M25', qty: 12, tech: T.RAHUL, final: 'COMPLETED', date: '2026-09-04', time: '08:00',
+    trucks: [[6, 'accept'], [6, 'accept']] },
+  { key: 'S8', client: 'CL-2026-0010', project: 'PRJ-2026-0024', p: 'RMC', g: 'M25', qty: 12, tech: T.RAHUL, final: 'COMPLETED', date: '2026-09-15', time: '09:30',
+    trucks: [[6, 'accept'], [6, 'accept']], cube: [['SEVEN_DAYS', '3']], castOn: '2026-09-15' },
+  { key: 'S9', client: 'CL-2026-0010', project: 'PRJ-2026-0024', p: 'RMC', g: 'M25', qty: 9, tech: T.RAHUL, final: 'COMPLETED', date: '2026-09-23', time: '07:45',
+    trucks: [[6, 'accept'], [3, 'accept']] },
+  { key: 'M4', client: 'CL-2026-0007', project: 'PRJ-2026-0020', p: 'RMC', g: 'M25', qty: 12, tech: T.RAMESH, final: 'COMPLETED', date: '2026-08-18', time: '08:15',
+    trucks: [[6, 'accept'], [6, 'accept']] },
+  { key: 'R4', client: 'CL-2026-0009', project: 'PRJ-2026-0022', p: 'RMC', g: 'M20', qty: 18, tech: T.VIKAS, final: 'COMPLETED', date: '2026-09-19', time: '08:00',
+    trucks: [[6, 'accept'], [6, 'accept'], [6, 'accept']] },
+  { key: 'G4', client: 'CL-2026-0008', project: 'PRJ-2026-0021', p: 'RMC', g: 'M40', qty: 6, tech: T.SURESH, final: 'COMPLETED', date: '2026-09-24', time: '10:00',
+    trucks: [[6, 'accept']] },
+  { key: 'V2', client: 'CL-2025-0004', project: 'PRJ-2026-0019', p: 'RMC-NEW', g: 'M10', qty: 10, tech: T.GANESH, final: 'COMPLETED', date: '2026-09-12', time: '11:00',
+    trucks: [[5, 'accept'], [5, 'accept']] },
+];
+const MORE = process.argv.includes('--more');
+const plan = MORE ? PLAN_MORE : PLAN;
+
 const STEPS = { CONFIRMED: ['CONFIRMED'], DISPATCHED: ['CONFIRMED', 'DISPATCHED'], DELAYED: ['CONFIRMED', 'DISPATCHED', 'DELAYED'], REACHED: ['CONFIRMED', 'DISPATCHED', 'REACHED'], COMPLETED: ['CONFIRMED', 'DISPATCHED', 'REACHED', 'COMPLETED'] };
 let truckSeq = 4100;
 const truckNo = () => `MH12${['AB', 'CD', 'EF', 'GH', 'JK'][truckSeq % 5]}${truckSeq++}`;
@@ -132,7 +155,7 @@ async function run() {
   }
 
   const made = {};
-  for (const s of PLAN) {
+  for (const s of plan) {
     const client = await db.client.findFirst({ where: { clientId: s.client, isDeleted: false } });
     const project = await db.project.findFirst({ where: { projectId: s.project, clientId: client.id, isDeleted: false } });
     const pp = await db.projectProduct.findFirst({ where: { projectId: project.id, productName: s.p, productGrade: s.g } });
@@ -223,7 +246,7 @@ async function run() {
   }
 
   // 6. Back-date history so bills age naturally (overdue, DSO, the 6-month chart).
-  for (const s of PLAN.filter((x) => x.date < TODAY)) {
+  for (const s of plan.filter((x) => x.date < TODAY)) {
     const order = await db.order.findFirst({ where: { orderId: made[s.key] }, include: { bill: true, client: { select: { creditDays: true } } } });
     const at = addDays(s.date, 0); at.setHours(Number(s.time.slice(0, 2)), Number(s.time.slice(3)));
     await db.order.update({ where: { id: order.id }, data: { date: s.date, createdAt: addDays(s.date, -2) } });
