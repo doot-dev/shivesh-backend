@@ -1,5 +1,5 @@
 import db from '../config/database.js';
-import { billBlocker } from './orderCompletion.js';
+import { billBlocker, keptQty } from './orderCompletion.js';
 
 /**
  * Data for the CA Pack registers (R1, R2, R3, R5, R6, R7, R13). Each builder
@@ -22,7 +22,7 @@ async function billsIn(from, to) {
           orderId: true, date: true, createdAt: true, productName: true, productGrade: true, quantity: true, status: true,
           client: { select: { clientId: true, companyName: true, gstNumber: true } },
           project: { select: { projectName: true, siteName: true } },
-          tmDetails: { where: { isDeleted: false }, select: { qty: true, approvalStatus: true } },
+          tmDetails: { where: { isDeleted: false }, select: { qty: true, rejectedQty: true, approvalStatus: true } },
         },
       },
     },
@@ -157,7 +157,7 @@ export async function exceptions() {
   for (const o of completed) {
     if (!o.bill || o.bill.isDeleted) add('Completed order with no active bill', o.orderId, billBlocker(o.tmDetails) || 'ready to bill', 'Add challans / review trucks, or bill manually');
     else {
-      const accepted = o.tmDetails.filter((t) => t.approvalStatus === 'ACCEPTED').reduce((s, t) => s + (qtyOf(t.qty) || 0), 0);
+      const accepted = o.tmDetails.filter((t) => t.approvalStatus === 'ACCEPTED').reduce((s, t) => s + keptQty(t), 0);
       if (accepted && Math.abs(accepted - o.bill.quantity) > 0.001) add('Billed qty ≠ accepted truck qty', o.bill.billNo, `billed ${o.bill.quantity}, accepted ${accepted}`, 'Check the bill; credit note if over-billed');
       if (o.tmDetails.some((t) => t.approvalStatus === 'REJECTED')) add('Rejected truck on a billed order', o.bill.billNo, o.tmDetails.filter((t) => t.approvalStatus === 'REJECTED').map((t) => t.tmNumber).join(', '), 'Decide on a credit note');
     }
@@ -194,7 +194,7 @@ export async function orderRegister(from, to) {
     include: {
       client: { select: { companyName: true } }, project: { select: { projectName: true, siteName: true } }, bill: { select: { billNo: true, status: true } },
       vendors: { where: { isDeleted: false }, select: { vendor: { select: { companyName: true } } } },
-      tmDetails: { where: { isDeleted: false }, select: { qty: true, approvalStatus: true, challanUrl: true } },
+      tmDetails: { where: { isDeleted: false }, select: { qty: true, rejectedQty: true, approvalStatus: true, challanUrl: true } },
     },
   });
   return {
@@ -218,7 +218,7 @@ export async function orderRegister(from, to) {
         product: o.productName, grade: o.productGrade, ordered: qtyOf(o.quantity), plants: o.vendors.map((v) => v.vendor.companyName).join(', '),
         status: o.status, trucks: o.tmDetails.length, rejected: o.tmDetails.length - live.length,
         delivered: live.reduce((s, t) => s + (qtyOf(t.qty) || 0), 0),
-        accepted: o.tmDetails.filter((t) => t.approvalStatus === 'ACCEPTED').reduce((s, t) => s + (qtyOf(t.qty) || 0), 0),
+        accepted: o.tmDetails.filter((t) => t.approvalStatus === 'ACCEPTED').reduce((s, t) => s + keptQty(t), 0),
         missing: live.some((t) => !t.challanUrl) ? 'Y' : 'N', billNo: o.bill?.billNo, billStatus: o.bill?.status, deleted: o.isDeleted ? 'Y' : 'N',
       };
     }),

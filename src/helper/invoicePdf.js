@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import logger from './logger.js';
+import { keptQty } from './orderCompletion.js';
 
 /**
  * Builds the invoice PDF for a bill: the invoice page (client, site, order,
@@ -193,7 +194,7 @@ export async function buildInvoicePdf(bill, order) {
       ensure(14);
       y -= 13;
       const batch = [tm.batchStartTime, tm.batchEndTime].filter(Boolean).join(' - ');
-      [tm.tmNumber, tm.truckNo, tm.qty, tm.challanNo || '-', batch || '-', tm.approvalStatus].forEach((v, i) =>
+      [tm.tmNumber, tm.truckNo, tm.rejectedQty ? `${keptQty(tm)} (-${tm.rejectedQty})` : tm.qty, tm.challanNo || '-', batch || '-', tm.approvalStatus].forEach((v, i) =>
         text(v, tc[i], { max: tc[i + 1] - tc[i] - 6 }),
       );
     }

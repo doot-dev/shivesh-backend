@@ -20,6 +20,13 @@ export function billBlocker(tms) {
   return null;
 }
 
+/** A truck's kept quantity: its qty less any part rejected at site (0 if unreadable). */
+export function keptQty(tm) {
+  const q = parseFloat(String(tm.qty ?? '').trim());
+  if (!Number.isFinite(q) || q <= 0) return 0;
+  return Math.max(0, Math.round((q - (tm.rejectedQty || 0)) * 1000) / 1000);
+}
+
 /** D4: bill the accepted quantity — the sum of accepted trucks. Null if any qty is unreadable. */
 export function acceptedQuantity(tms) {
   let total = 0;
@@ -27,7 +34,7 @@ export function acceptedQuantity(tms) {
     if (tm.isDeleted || tm.approvalStatus !== 'ACCEPTED') continue;
     const q = parseFloat(String(tm.qty ?? '').trim());
     if (!Number.isFinite(q) || q <= 0) return null;
-    total += q;
+    total += keptQty(tm);
   }
   return Math.round(total * 1000) / 1000;
 }

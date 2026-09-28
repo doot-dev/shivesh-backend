@@ -707,6 +707,8 @@ model TmDetail {
   rejectedAt       DateTime?
   rejectedByType   String?
   rejectedById     String?
+  /// Part rejection (2026-09-29): CBM wasted / refused at site; billed = qty − rejectedQty.
+  rejectedQty      Float?
   /// W13: when the truck was poured (set with the challan), and which plant.
   deliveredAt      DateTime?
   vendorLocationId Int?

@@ -11,7 +11,7 @@ import { createActivityLog } from "../../../helper/activityLogger.js";
 import { sendNotification } from "../../../helper/notificationHelper.js";
 import { getBillDocPublicUrl } from "../../../config/billUploadConfig.js";
 import { getChallanPublicUrl, getOrderChallanPublicUrl } from "../../../config/challanUploadConfig.js";
-import { billIfReady } from "../../../helper/orderCompletion.js";
+import { billIfReady, keptQty } from "../../../helper/orderCompletion.js";
 import { rejectIfLocked } from "../../../helper/updateWindow.js";
 import { productByName } from "../../../helper/productUnits.js";
 import { buildInvoicePdf } from "../../../helper/invoicePdf.js";
@@ -214,6 +214,7 @@ async function buildBillPayload(bill, order) {
       approvedAt: tm.approvedAt,
       rejectedByType: tm.rejectedByType,
       rejectedAt: tm.rejectedAt,
+      rejectedQty: tm.rejectedQty,
     })),
     // W21: payments received against this bill, and what is still pending.
     payments: await (async () => {
@@ -233,7 +234,8 @@ async function buildBillPayload(bill, order) {
       return {
         ordered: q(order.quantity),
         delivered: r3(live.reduce((s, tm) => s + q(tm.qty), 0)),
-        accepted: r3(order.tmDetails.filter((tm) => tm.approvalStatus === "ACCEPTED").reduce((s, tm) => s + q(tm.qty), 0)),
+        accepted: r3(order.tmDetails.filter((tm) => tm.approvalStatus === "ACCEPTED").reduce((s, tm) => s + keptQty(tm), 0)),
+        wasted: r3(live.reduce((s, tm) => s + (tm.rejectedQty || 0), 0)),
         billed: bill.quantity,
       };
     })(),
@@ -968,18 +970,30 @@ export const updateTmApproval = async (req, res) => {
 
     const { approvalStatus, rejectionReason } = req.body;
 
-    if (approvalStatus === "REJECTED" && !rejectionReason?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "rejectionReason is required when rejecting a TM",
-      });
-    }
-
     const { error, statusCode, tm, order, orderCode } = await resolveTm(req.params);
     if (error) {
       return res.status(statusCode).json({ success: false, message: error });
     }
     if (await rejectIfLocked(order, req, res)) return;
+
+    // Part rejection: accepted with `rejectedQty` CBM wasted. Omitted = keep what
+    // the site recorded; 0 / "" clears it.
+    const truckQty = parseFloat(String(tm.qty ?? ""));
+    let rejectedQty = tm.rejectedQty;
+    if (req.body.rejectedQty !== undefined) {
+      rejectedQty = req.body.rejectedQty === "" || req.body.rejectedQty === null ? null : Number(req.body.rejectedQty) || null;
+      if (rejectedQty !== null && (!(rejectedQty > 0) || !(rejectedQty < truckQty))) {
+        return res.status(400).json({ success: false, message: `Rejected qty must be more than 0 and less than the truck's ${tm.qty} — reject the whole truck instead` });
+      }
+    }
+    const partReject = approvalStatus !== "REJECTED" && rejectedQty > 0;
+    const reason = rejectionReason?.trim() || (partReject ? tm.rejectionReason : null);
+    if ((approvalStatus === "REJECTED" || partReject) && !reason) {
+      return res.status(400).json({
+        success: false,
+        message: partReject ? "Give a reason for the rejected quantity" : "rejectionReason is required when rejecting a TM",
+      });
+    }
 
     logger.info(`Updating TM approval: ${tmId} -> ${approvalStatus}`);
 
@@ -987,13 +1001,14 @@ export const updateTmApproval = async (req, res) => {
       where: { id: tmId },
       data: {
         approvalStatus,
-        rejectionReason:
-          approvalStatus === "REJECTED" ? rejectionReason.trim() : null,
+        rejectionReason: approvalStatus === "REJECTED" || partReject ? reason : null,
+        rejectedQty: approvalStatus === "REJECTED" ? null : rejectedQty ?? null,
         approvedAt: approvalStatus === "ACCEPTED" ? new Date() : null,
         // W32: staff rejecting (incl. on the client's behalf) is recorded as USER.
-        ...(approvalStatus === "REJECTED"
+        // A part rejection the site recorded keeps the client as its author.
+        ...(approvalStatus === "REJECTED" || (partReject && req.body.rejectedQty !== undefined && rejectedQty !== tm.rejectedQty)
           ? { rejectedAt: new Date(), rejectedByType: "USER", rejectedById: String(req.user?.data?.id ?? "") }
-          : { rejectedAt: null, rejectedByType: null, rejectedById: null }),
+          : partReject ? {} : { rejectedAt: null, rejectedByType: null, rejectedById: null }),
       },
     });
 
@@ -1001,8 +1016,10 @@ export const updateTmApproval = async (req, res) => {
       title: `TM ${approvalStatus.toLowerCase()}`,
       description:
         approvalStatus === "REJECTED"
-          ? `${tm.tmNumber} (${tm.truckNo}) rejected on ${billNo || orderCode} — ${rejectionReason.trim()}`
-          : `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus.toLowerCase()} on ${billNo || orderCode}`,
+          ? `${tm.tmNumber} (${tm.truckNo}) rejected on ${billNo || orderCode} — ${reason}`
+          : partReject
+            ? `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus === "ACCEPTED" ? "accepted" : "kept"} ${keptQty({ qty: tm.qty, rejectedQty })} of ${tm.qty} on ${billNo || orderCode}, ${rejectedQty} rejected — ${reason}`
+            : `${tm.tmNumber} (${tm.truckNo}) ${approvalStatus.toLowerCase()} on ${billNo || orderCode}`,
       entityType: "ORDER",
       entityId: tm.orderId,
       action: "STATUS_CHANGED",

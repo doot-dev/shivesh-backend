@@ -15,6 +15,8 @@ assert.match(billBlocker([tm({ approvalStatus: 'PENDING' })]), /awaiting challan
 assert.equal(billBlocker([tm(), tm({ approvalStatus: 'REJECTED', challanUrl: null })]), null); // rejected truck needs no challan
 assert.equal(acceptedQuantity([tm({ qty: '6' }), tm({ qty: '6 m3' }), tm({ qty: '4.5', approvalStatus: 'REJECTED' })]), 12);
 assert.equal(acceptedQuantity([tm({ qty: 'six' })]), null);
+// Part rejection: 6 CBM truck, 1 wasted at site, bills 5.
+assert.equal(acceptedQuantity([tm({ qty: '6', rejectedQty: 1 }), tm({ qty: '6' })]), 11);
 
 // W9 transitions
 assert.equal(orderStatusBlocked('NEW', 'CONFIRMED'), null);

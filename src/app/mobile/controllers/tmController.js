@@ -322,6 +322,8 @@ export async function clientRejectTm(req, res) {
     const { orderId, tmId } = req.params;
     const { reason, note } = req.body;
     const clientDbId = req.user.data.id;
+    // Part rejection (2026-09-29): `rejectedQty` CBM wasted, the rest poured and billed.
+    const rejectedQty = req.body.rejectedQty === undefined || req.body.rejectedQty === '' || req.body.rejectedQty === null ? null : Number(req.body.rejectedQty);
 
     if (!reason?.trim()) {
       return res.status(400).json({ success: false, message: 'reason is required' });
@@ -334,7 +336,17 @@ export async function clientRejectTm(req, res) {
 
     const tm = await db.tmDetail.findFirst({ where: { id: tmId, orderId: order.id, isDeleted: false } });
     if (!tm) return res.status(404).json({ success: false, message: 'TM detail not found' });
-    if (tm.status !== 'REACHED' || tm.challanUrl || tm.approvalStatus !== 'PENDING') {
+    const partial = rejectedQty !== null;
+    if (partial) {
+      // Part of the load can be refused once the truck is at site, until the office reviews it.
+      if (!['REACHED', 'DELIVERED', 'COMPLETED'].includes(tm.status) || tm.approvalStatus !== 'PENDING') {
+        return res.status(409).json({ success: false, message: 'This truck can no longer be changed — please message the office' });
+      }
+      const truckQty = parseFloat(String(tm.qty ?? ''));
+      if (!(rejectedQty > 0) || !(rejectedQty < truckQty)) {
+        return res.status(400).json({ success: false, message: `Rejected qty must be more than 0 and less than ${tm.qty} — reject the whole truck instead` });
+      }
+    } else if (tm.status !== 'REACHED' || tm.challanUrl || tm.approvalStatus !== 'PENDING') {
       return res.status(409).json({ success: false, message: 'This truck can no longer be rejected — please message the office' });
     }
 
@@ -342,19 +354,21 @@ export async function clientRejectTm(req, res) {
     const updated = await db.tmDetail.update({
       where: { id: tmId },
       data: {
-        approvalStatus: 'REJECTED',
+        // A part rejection keeps the truck in review: it still needs its challan and the office's OK.
+        ...(partial ? { rejectedQty } : { approvalStatus: 'REJECTED' }),
         rejectionReason,
         rejectedAt: new Date(),
         rejectedByType: 'CLIENT',
         rejectedById: String(clientDbId),
       },
     });
+    const what = partial ? `refused ${rejectedQty} of ${tm.qty} on` : 'rejected';
 
     // ponytail: Activity needs a User as actor, so a client action can't be logged
     // there yet (W31 adds actorType in 009). The admin bell below is the trail.
     await notifyAdmins({
-      title: 'Truck rejected at site',
-      message: `${req.user.data.contactName || 'Client'} rejected ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
+      title: partial ? 'Truck part rejected at site' : 'Truck rejected at site',
+      message: `${req.user.data.contactName || 'Client'} ${what} ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
       type: 'STATUS_UPDATED',
       relatedId: order.id,
       orderId: order.id,
@@ -363,8 +377,8 @@ export async function clientRejectTm(req, res) {
     await Promise.all(techs.map((x) => sendNotification({
       targetType: 'FIELD_TECH',
       targetId: String(x.userId),
-      title: 'Truck rejected at site',
-      message: `${req.user.data.contactName || 'Client'} rejected ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
+      title: partial ? 'Truck part rejected at site' : 'Truck rejected at site',
+      message: `${req.user.data.contactName || 'Client'} ${what} ${tm.tmNumber} (${tm.truckNo}) on ${orderId}: ${rejectionReason}`,
       type: 'STATUS_UPDATED',
       relatedId: order.id,
       orderId: order.id,
