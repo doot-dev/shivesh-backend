@@ -132,6 +132,9 @@ export const createProject = async (req, res) => {
     // Create project
     const project = await db.project.create({
       data: {
+        // PO rates for extra services (2026-09-29)
+        ...(req.body.pumpingRate !== undefined && { pumpingRate: req.body.pumpingRate === '' || req.body.pumpingRate === null ? null : Number(req.body.pumpingRate) }),
+        ...(req.body.partLoadRate !== undefined && { partLoadRate: req.body.partLoadRate === '' || req.body.partLoadRate === null ? null : Number(req.body.partLoadRate) }),
         projectId,
         projectName,
         clientId: client.id,
@@ -298,6 +301,9 @@ export const updateProject = async (req, res) => {
     const updatedProject = await db.project.update({
       where: { id: existingProject.id },
       data: {
+        // PO rates for extra services (2026-09-29)
+        ...(req.body.pumpingRate !== undefined && { pumpingRate: req.body.pumpingRate === '' || req.body.pumpingRate === null ? null : Number(req.body.pumpingRate) }),
+        ...(req.body.partLoadRate !== undefined && { partLoadRate: req.body.partLoadRate === '' || req.body.partLoadRate === null ? null : Number(req.body.partLoadRate) }),
         ...(projectName && { projectName }),
         ...(siteName && { siteName }),
         ...(address !== undefined && { address }),

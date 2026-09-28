@@ -15,6 +15,7 @@ import { billIfReady } from "../../../helper/orderCompletion.js";
 import { rejectIfLocked } from "../../../helper/updateWindow.js";
 import { productByName } from "../../../helper/productUnits.js";
 import { buildInvoicePdf } from "../../../helper/invoicePdf.js";
+import { extrasTotal } from "../../../helper/orderExtras.js";
 
 /**
  * Resolve a bill and one of its order's TMs together.
@@ -129,6 +130,7 @@ export const invoiceOrderInclude = () => buildBillOrderInclude();
 
 function buildBillOrderInclude() {
   return {
+    extras: { where: { removedAt: null }, orderBy: { createdAt: 'asc' }, select: { name: true, amount: true } },
     project: { select: { projectId: true, projectName: true, siteName: true, projectLocation: true } },
     client: { select: { clientId: true, companyName: true, contactNumber: true, email: true, gstNumber: true } },
     vendors: {
@@ -298,6 +300,9 @@ export async function generateBillForOrder(
     return { error: rateError, statusCode: 400 };
   }
 
+  // Pumping / part load / other extras ride on the same bill (2026-09-29).
+  const extrasAmount = await extrasTotal(order.id);
+
   // Generate billNo
   const currentYear = new Date().getFullYear();
   const lastBill = await db.bill.findFirst({
@@ -317,7 +322,8 @@ export async function generateBillForOrder(
       orderId: order.id,
       quantity,
       rate,
-      amount: quantity * rate,
+      extrasAmount,
+      amount: Math.round((quantity * rate + extrasAmount) * 100) / 100,
       status: "PENDING",
       issueDate: new Date(),
       // P2.7 / D11: due = bill date + the client's credit days (M), unless given.
@@ -702,7 +708,7 @@ export const updateBill = async (req, res) => {
       data: {
         quantity,
         rate,
-        amount: quantity * rate,
+        amount: Math.round((quantity * rate + (bill.extrasAmount || 0)) * 100) / 100,
         ...(dueDate !== undefined && { dueDate: dueDate ? new Date(dueDate) : null }),
       },
     });

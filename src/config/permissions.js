@@ -172,6 +172,14 @@ export const MODULES = [
     actions: [...CRUD, ACTIONS.APPROVE],
   },
   {
+    key: 'orderExtras',
+    parent: 'orders',
+    label: 'Order · Extra services',
+    path: null,
+    description: 'Pumping, part load and other charges on an order (delete = remove them).',
+    actions: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.DELETE],
+  },
+  {
     key: 'cubeTests',
     label: 'Cube Testing',
     path: '/testing',

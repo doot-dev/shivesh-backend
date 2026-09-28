@@ -165,7 +165,13 @@ export async function buildInvoicePdf(bill, order) {
   text(`${order.productName} ${order.productGrade}`, MARGIN + 4, { max: 250 });
   text(bill.quantity, QTY, { align: 'right' });
   text(money(bill.rate), RATE, { align: 'right' });
-  text(money(bill.amount), AMT, { align: 'right' });
+  text(money(bill.quantity * bill.rate), AMT, { align: 'right' });
+  // Extra services (pumping, part load …) — one line each (2026-09-29).
+  for (const x of order.extras ?? []) {
+    y -= 16;
+    text(x.name, MARGIN + 4, { max: 250 });
+    text(money(x.amount), AMT, { align: 'right' });
+  }
   y -= 10;
   rule();
   y -= 16;

@@ -24,6 +24,7 @@ import { bookingSnapshot, creditGate } from "../../../helper/orderBooking.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
 import { orderTechUserIds } from "../../../helper/techAccess.js";
+import { addExtra, removeExtra, extrasSelect } from "../../../helper/orderExtras.js";
 import {
   sendNotification,
   notifyAdmins,
@@ -82,12 +83,15 @@ function buildTechnicianInclude() {
 
 function buildInclude() {
   return {
+    extras: extrasSelect,
     project: {
       select: {
         projectId: true,
         projectName: true,
         siteName: true,
         projectLocation: true,
+        pumpingRate: true,
+        partLoadRate: true,
       },
     },
     client: {
@@ -1824,6 +1828,32 @@ export async function releaseCreditHold(req, res) {
     return res.status(200).json({ success: true, message: action === "CANCEL" ? "Order cancelled" : "Credit hold released" });
   } catch (error) {
     logger.error("releaseCreditHold error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+// ─── Extra services (2026-09-29): pumping, part load, other ───────────────────
+
+/** POST /orders/:orderId/extras  { kind, name, amount } */
+export async function addOrderExtra(req, res) {
+  try {
+    const r = await addExtra(req.params.orderId, req.body, req.user?.data?.id);
+    if (r.error) return res.status(r.status).json({ success: false, message: r.error });
+    return res.status(201).json({ success: true, message: "Extra service added", data: r.extra });
+  } catch (error) {
+    logger.error("addOrderExtra error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
+  }
+}
+
+/** DELETE /orders/:orderId/extras/:extraId  { reason } */
+export async function removeOrderExtra(req, res) {
+  try {
+    const r = await removeExtra(req.params.orderId, req.params.extraId, req.body?.reason, req.user?.data?.id);
+    if (r.error) return res.status(r.status).json({ success: false, message: r.error });
+    return res.status(200).json({ success: true, message: "Extra service removed" });
+  } catch (error) {
+    logger.error("removeOrderExtra error:", error);
     return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 }

@@ -37,6 +37,7 @@ model User {
   assignedOrders      OrderTechnician[]   @relation("OrderTechnicianUser")
   projectAssignments  ProjectTechnician[]
   leadMessages        LeadMessage[]       @relation("LeadMessageAuthor")
+  orderExtrasAdded    OrderExtra[]        @relation("OrderExtraAddedBy")
   roleRef             Role?               @relation("UserRoleRef", fields: [roleId], references: [id])
   permissionOverrides UserPermission[]    @relation("UserPermissionOverrides")
 
@@ -482,6 +483,9 @@ model Project {
   projectProducts        ProjectProduct[]
   contactScopes          ClientContactProject[]
   technicians            ProjectTechnician[]
+  /// PO rates for extra services (2026-09-29), prefilled when one is added to an order.
+  pumpingRate            Float?
+  partLoadRate           Float?
 
   @@index([clientId])
 }
@@ -570,6 +574,7 @@ model Order {
   project            Project           @relation(fields: [projectId], references: [id])
   comments           OrderComment[]
   technicians        OrderTechnician[]
+  extras             OrderExtra[]
   vendors            OrderVendor[]
   tmDetails          TmDetail[]
   cubeTests          CubeTest[]
@@ -623,22 +628,24 @@ model CubeTestAttachment {
 }
 
 model Bill {
-  id          String              @id @default(cuid())
-  billNo      String              @unique
-  orderId     String              @unique
-  quantity    Float
-  rate        Float
-  amount      Float
-  status      BillStatus          @default(PENDING)
-  documentUrl String?
-  issueDate   DateTime?
-  dueDate     DateTime?
-  paidAt      DateTime?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  isDeleted   Boolean             @default(false)
-  order       Order               @relation(fields: [orderId], references: [id])
-  allocations PaymentAllocation[]
+  id           String              @id @default(cuid())
+  billNo       String              @unique
+  orderId      String              @unique
+  quantity     Float
+  rate         Float
+  amount       Float
+  /// Pumping / part load / other extras included in `amount` (2026-09-29).
+  extrasAmount Float               @default(0)
+  status       BillStatus          @default(PENDING)
+  documentUrl  String?
+  issueDate    DateTime?
+  dueDate      DateTime?
+  paidAt       DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  isDeleted    Boolean             @default(false)
+  order        Order               @relation(fields: [orderId], references: [id])
+  allocations  PaymentAllocation[]
 
   @@index([orderId])
 }
@@ -897,4 +904,24 @@ model ProjectTechnician {
 
   @@unique([projectId, userId])
   @@index([userId])
+}
+
+/// An extra service on an order (2026-09-29): pumping, a part-load charge or
+/// anything else agreed in the PO. Added by the Shivesh team from Confirmed
+/// until the order completes; billed with the concrete. Removal is soft.
+model OrderExtra {
+  id           String    @id @default(cuid())
+  orderId      String
+  kind         String    @db.VarChar(20) /// PUMPING | PART_LOAD | OTHER
+  name         String    @db.VarChar(191)
+  amount       Float
+  addedById    Int
+  createdAt    DateTime  @default(now())
+  removedAt    DateTime?
+  removedById  Int?
+  removeReason String?   @db.Text
+  order        Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  addedBy      User      @relation("OrderExtraAddedBy", fields: [addedById], references: [id])
+
+  @@index([orderId])
 }

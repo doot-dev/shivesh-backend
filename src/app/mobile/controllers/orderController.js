@@ -12,6 +12,7 @@ import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow
 import { orderProjectScope, projectScope, isClientOwner } from '../../../helper/clientAccess.js';
 import { ACTIVE_STATUSES, PAST_STATUSES, FIELD_STATUSES, isActiveStatus, orderStatusBlocked } from '../../../helper/orderStatus.js';
 import { techOrderScope, orderTechUserIds, notifyProjectTechsOfNewOrder } from '../../../helper/techAccess.js';
+import { addExtra, extrasSelect } from '../../../helper/orderExtras.js';
 
 const assignedTechUserIds = orderTechUserIds;
 
@@ -60,6 +61,7 @@ function buildOrderSelect() {
       orderBy: { createdAt: 'asc' },
     },
     comments: { orderBy: { createdAt: 'asc' } },
+    extras: extrasSelect,
     // docs/06: who placed it from the client app, so the plant/tech knows whom to call.
     placedBy: { select: { name: true, phone: true, role: { select: { name: true } } } },
   };
@@ -744,6 +746,18 @@ export async function addComment(req, res) {
     return res.status(201).json({ success: true, data: comment });
   } catch (error) {
     logger.error('addComment error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** POST /tech/orders/:orderId/extras — an FT adds pumping / part load / other on their project's order. */
+export async function techAddExtra(req, res) {
+  try {
+    const r = await addExtra(req.params.orderId, req.body, req.user.data.id, techOrderScope(req.user.data.id));
+    if (r.error) return res.status(r.status).json({ success: false, message: r.error });
+    return res.status(201).json({ success: true, message: 'Extra service added', data: r.extra });
+  } catch (error) {
+    logger.error('techAddExtra error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
 }

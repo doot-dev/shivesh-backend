@@ -42,6 +42,8 @@ router.delete('/:orderId/cube-test/:cubeTestId', verifyToken, requirePermission(
 router.delete('/:orderId/cube-test/:cubeTestId/attachments/:attachmentId', verifyToken, requirePermission(can('cubeTests', 'update')), cubeTestController.deleteAttachment);
 
 // W23: credit hold release — only for approvers (Super Admin, or a Project Manager granted orders.approve).
+router.post('/:orderId/extras', verifyToken, requirePermission(can('orderExtras', 'create')), orderController.addOrderExtra);
+router.delete('/:orderId/extras/:extraId', verifyToken, requirePermission(can('orderExtras', 'delete')), orderController.removeOrderExtra);
 router.post('/:orderId/credit-release', verifyToken, requirePermission(can('orders', 'approve')), orderController.releaseCreditHold);
 
 // Order routes

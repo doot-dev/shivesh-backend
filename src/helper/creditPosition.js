@@ -84,6 +84,7 @@ export async function getCreditPosition(clientDbId, now = new Date()) {
         projectId: true, productName: true, productGrade: true, rate: true,
         bill: { select: { id: true, amount: true, status: true, dueDate: true, issueDate: true, isDeleted: true, allocations: { where: { isReversed: false }, select: { amount: true } } } },
         tmDetails: { where: { isDeleted: false, NOT: { challanUrl: null }, approvalStatus: { not: 'REJECTED' } }, select: { qty: true, deliveredAt: true, updatedAt: true } },
+        extras: { where: { removedAt: null }, select: { amount: true, createdAt: true } },
       },
     }),
     db.payment.findMany({ where: { clientId: clientDbId, status: 'ACTIVE' }, select: { amount: true, receivedOn: true, allocations: { where: { isReversed: false }, select: { amount: true } } } }),
@@ -106,6 +107,10 @@ export async function getCreditPosition(clientDbId, now = new Date()) {
   const billBalances = bills.reduce((s, b) => s + b.balance, 0);
   const unbilledTrucks = orders.filter((o) => !o.bill || o.bill.isDeleted).flatMap((o) =>
     o.tmDetails.map((t) => ({ value: qtyOf(t.qty) * (o.rate ?? rates[`${o.projectId}|${o.productName}|${o.productGrade}`] ?? 0), at: t.deliveredAt || t.updatedAt })));
+  // Extra services (pumping, part load) on orders not billed yet count as used
+  // from the moment they are added; billed ones are inside the bill amount.
+  const unbilledExtras = orders.filter((o) => !o.bill || o.bill.isDeleted).flatMap((o) => o.extras.map((x) => ({ value: x.amount, at: x.createdAt })));
+  unbilledTrucks.push(...unbilledExtras);
   const unbilled = unbilledTrucks.reduce((s, t) => s + t.value, 0);
   // Open orders not yet counted: booked value minus trucks already in `unbilled`.
   const pendingByOrder = Object.fromEntries(orders

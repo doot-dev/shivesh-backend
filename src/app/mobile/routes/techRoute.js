@@ -20,6 +20,7 @@ router.put('/notifications/:notificationId/read', verifyTechToken, techControlle
 // Projects this FT is on, and booking an order for one (2026-09-28)
 router.get('/projects', verifyTechToken, techController.getMyProjects);
 router.post('/orders', verifyTechToken, orderController.techCreateOrder);
+router.post('/orders/:orderId/extras', verifyTechToken, orderController.techAddExtra);
 
 // The order's vendor: the FT sets it the same way the panel does (shared handlers).
 router.get('/vendors', verifyTechToken, techController.listVendors);
