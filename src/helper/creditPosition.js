@@ -16,25 +16,32 @@ import { ACTIVE_STATUSES } from './orderStatus.js';
  */
 /**
  * Credit health for people who must not see amounts (panel roles, field techs,
- * client contacts other than the Owner): a band and a 0–100 fill. Never blocks
- * an order (2026-09-28): it only warns, and the team decides.
+ * client contacts other than the Owner). Drawn as a gauge of four equal
+ * segments, green → yellow → orange → red, with a marker at `position` (0–100).
+ * Never blocks an order (2026-09-28): it only warns, and the team decides.
  *   RED    = overdue, or already at/over the limit
  *   ORANGE = 80 %+ used, or open orders would take it over the limit
+ *   YELLOW = 50 %+ used
  *   GREEN  = the rest, and any client with no limit set
- * ponytail: fixed 80 % line; move it to Settings if the office wants to tune it.
+ * ponytail: fixed 50/80 lines; move them to Settings if the office wants to tune them.
  */
 export function creditBand({ flag, limit, used, pending = 0 }) {
   const usedPct = limit > 0 ? Math.min(100, Math.max(0, Math.round((used / limit) * 100))) : 0;
   const band = flag !== 'OK' ? 'RED'
     : limit > 0 && (usedPct >= 80 || used + pending > limit) ? 'ORANGE'
-      : 'GREEN';
-  return { band, usedPct };
+      : usedPct >= 50 ? 'YELLOW'
+        : 'GREEN';
+  // Marker inside the band's quarter, moved along by how much is used.
+  const within = { GREEN: usedPct / 50, YELLOW: (usedPct - 50) / 30, ORANGE: (usedPct - 80) / 20, RED: 0.5 }[band];
+  const start = { GREEN: 0, YELLOW: 25, ORANGE: 50, RED: 75 }[band];
+  const position = Math.round(start + 25 * Math.min(0.9, Math.max(0.1, within)));
+  return { band, usedPct, position };
 }
 
 /** Band only — safe to send to anyone. */
 export async function getCreditBand(clientDbId) {
-  const { band, usedPct } = await getCreditPosition(clientDbId);
-  return { band, usedPct };
+  const { band, usedPct, position } = await getCreditPosition(clientDbId);
+  return { band, usedPct, position };
 }
 
 const PAYABLE = ['PENDING', 'SENT', 'OVERDUE', 'PARTIALLY_PAID'];

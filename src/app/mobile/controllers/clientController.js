@@ -312,11 +312,11 @@ export async function markNotificationRead(req, res) {
 export async function getCredit(req, res) {
   try {
     const pos = await getCreditPosition(req.user.data.id);
-    const { band, usedPct, outstanding, overdueAmount, overdueBillCount, advance, nextDueDate, daysLeft, creditDays } = pos;
+    const { band, usedPct, position, outstanding, overdueAmount, overdueBillCount, advance, nextDueDate, daysLeft, creditDays } = pos;
     // Accounts people still see what is due (it is on their bills anyway), never the limit.
     const dues = hasClientPermission(req.clientAccess, 'account.view')
       && { outstanding, overdueAmount, overdueBillCount, advance, nextDueDate, daysLeft, creditDays };
-    const data = isClientOwner(req.clientAccess) ? pos : { band, usedPct, ...dues };
+    const data = isClientOwner(req.clientAccess) ? pos : { band, usedPct, position, ...dues };
     return res.status(200).json({ success: true, data });
   } catch (error) {
     logger.error('getCredit error:', error);

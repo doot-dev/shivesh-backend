@@ -231,6 +231,7 @@ export async function clientGetOrder(req, res) {
       data: {
         ...formatOrder(order),
         creditBand: pos.band,
+        creditPosition: pos.position,
         ...(isClientOwner(req.clientAccess) && thisOrder > 0 && pos.limit > 0 && {
           creditPreview: { available: pos.available, afterThisOrder: r2(pos.available - thisOrder), orderValue: thisOrder },
         }),
@@ -548,8 +549,8 @@ export async function techGetOrder(req, res) {
     }
 
     // Band and fill only — a technician never sees the client's amounts.
-    const { band, usedPct } = await getCreditBand(clientDbId);
-    return res.status(200).json({ success: true, data: { ...formatOrder(order), creditBand: band, creditUsedPct: usedPct } });
+    const { band, usedPct, position } = await getCreditBand(clientDbId);
+    return res.status(200).json({ success: true, data: { ...formatOrder(order), creditBand: band, creditUsedPct: usedPct, creditPosition: position } });
   } catch (error) {
     logger.error('techGetOrder error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });

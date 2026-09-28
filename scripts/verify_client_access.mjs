@@ -72,7 +72,7 @@ const credit = async (t) => (await call(t, 'GET', '/credit')).body.data;
 assert.ok('limit' in await credit(owner), 'owner sees the limit');
 const acc = await credit(accounts);
 assert.ok(!('limit' in acc) && 'outstanding' in acc && acc.band, 'accounts: dues, no limit');
-assert.deepEqual(Object.keys(await credit(engineer)).sort(), ['band', 'usedPct'], 'engineer: band only');
+assert.deepEqual(Object.keys(await credit(engineer)).sort(), ['band', 'position', 'usedPct'], 'engineer: band only');
 
 // Project scope: the engineer sees only his projects, and only their orders.
 const scope = new Set(meEng.projects.map((p) => p.projectId));

@@ -412,7 +412,7 @@ export async function clientAnalytics(req, res) {
     if (!data) return res.status(404).json({ success: false, message: 'Client not found' });
     const client = await db.client.findFirst({ where: { clientId: req.params.clientId }, select: { id: true } });
     const pos = await getCreditPosition(client.id);
-    const credit = hasPermission(req.access, 'payments.view') ? pos : { band: pos.band, usedPct: pos.usedPct };
+    const credit = hasPermission(req.access, 'payments.view') ? pos : { band: pos.band, usedPct: pos.usedPct, position: pos.position };
     return res.status(200).json({ success: true, data: { ...data, credit } });
   } catch (error) {
     logger.error('clientAnalytics error:', error);
@@ -441,7 +441,7 @@ export async function clientCredit(req, res) {
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
     const pos = await getCreditPosition(client.id);
     const seesAmounts = hasPermission(req.access, 'payments.view');
-    return res.status(200).json({ success: true, data: seesAmounts ? pos : { band: pos.band, usedPct: pos.usedPct } });
+    return res.status(200).json({ success: true, data: seesAmounts ? pos : { band: pos.band, usedPct: pos.usedPct, position: pos.position } });
   } catch (error) {
     logger.error('clientCredit error:', error);
     return res.status(500).json({ success: false, message: 'Failed to load credit' });
