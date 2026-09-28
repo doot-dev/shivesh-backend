@@ -48,7 +48,7 @@ const matrix = [
   ['POST', '/orders/ORD-0000-0000/tm/x/reject', {}, 400, 400, 403],
   ['GET', '/cube-tests', null, 200, 200, 403],
   ['GET', '/bills', null, 200, 403, 200],
-  ['GET', '/credit', null, 200, 403, 200],
+  ['GET', '/credit', null, 200, 200, 200], // band for all; amounts checked below
   ['GET', '/ledger', null, 200, 403, 200],
   ['GET', '/payments', null, 200, 403, 200],
   ['GET', '/team', null, 200, 403, 403],
@@ -66,6 +66,13 @@ for (const [method, path, body, ...want] of matrix) {
   }
   assert.deepEqual(got, want, `${method} ${path}: owner/engineer/accounts`);
 }
+
+// Credit (2026-09-28): only the Owner sees the limit; Accounts sees dues; the engineer the band alone.
+const credit = async (t) => (await call(t, 'GET', '/credit')).body.data;
+assert.ok('limit' in await credit(owner), 'owner sees the limit');
+const acc = await credit(accounts);
+assert.ok(!('limit' in acc) && 'outstanding' in acc && acc.band, 'accounts: dues, no limit');
+assert.deepEqual(Object.keys(await credit(engineer)).sort(), ['band', 'usedPct'], 'engineer: band only');
 
 // Project scope: the engineer sees only his projects, and only their orders.
 const scope = new Set(meEng.projects.map((p) => p.projectId));

@@ -90,6 +90,9 @@ export async function loadClientAccess(tokenData) {
   return contact ? toAccess(contact) : null;
 }
 
+/** Owner (the locked system role) — the only contact who sees credit amounts. Dev and old tokens act as Owner. */
+export const isClientOwner = (access) => Boolean(access) && (!access.contact || access.contact.role.isSystem);
+
 export const hasClientPermission = (access, key) => Boolean(access?.permissions.has(key));
 
 /** Route guard (any of the keys). The code lets the app tell "role forbids this" from "session dead". */

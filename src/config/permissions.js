@@ -138,6 +138,13 @@ export const MODULES = [
     actions: [ACTIONS.VIEW, ACTIONS.CREATE, ACTIONS.DELETE],
   },
   {
+    key: 'creditScore',
+    label: 'Credit Score',
+    path: null,
+    description: 'Green / orange / red credit bar on clients and orders. No amounts.',
+    actions: VIEW_ONLY,
+  },
+  {
     key: 'reports',
     label: 'Reports',
     path: '/reports',

@@ -448,7 +448,7 @@ export async function createOrder(req, res) {
     }
     const orderId = `ORD-${currentYear}-${String(seq).padStart(4, "0")}`;
 
-    // W2/W38 freeze rate + unit; W23 credit gate (hold for approval, D12).
+    // W2/W38 freeze rate + unit; W23 credit check (warns only since 2026-09-28).
     const snap = await bookingSnapshot(project.id, productName, productGrade);
     const gate = await creditGate(client.id, (parseFloat(quantity) || 0) * (snap.rate || 0));
 
@@ -671,9 +671,6 @@ export async function updateOrderStatus(req, res) {
 
     if (await rejectIfLocked(order, req, res)) return;
 
-    if (order.creditHold && status && status !== "CANCELLED" && status !== order.status) {
-      return res.status(409).json({ success: false, message: `Order ${orderId} is on credit hold — release it first` });
-    }
     const { cancelReason } = req.body;
     if (status === "CANCELLED" && order.status !== "CANCELLED" && !cancelReason?.trim()) {
       return res.status(400).json({ success: false, message: "A cancel reason is required" });

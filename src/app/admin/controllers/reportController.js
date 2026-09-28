@@ -4,6 +4,7 @@ import { REGISTERS } from "../../../helper/registers.js";
 import { newWorkbook, addRegisterSheet } from "../../../helper/xlsx.js";
 import { getClientAnalytics, getPortfolioAnalytics } from "../../../helper/clientAnalytics.js";
 import { getCreditPosition } from "../../../helper/creditPosition.js";
+import { hasPermission } from "../../../helper/accessControl.js";
 
 /**
  * Admin reporting — client payment behaviour and credit risk.
@@ -410,7 +411,9 @@ export async function clientAnalytics(req, res) {
     const data = await getClientAnalytics(req.params.clientId);
     if (!data) return res.status(404).json({ success: false, message: 'Client not found' });
     const client = await db.client.findFirst({ where: { clientId: req.params.clientId }, select: { id: true } });
-    return res.status(200).json({ success: true, data: { ...data, credit: await getCreditPosition(client.id) } });
+    const pos = await getCreditPosition(client.id);
+    const credit = hasPermission(req.access, 'payments.view') ? pos : { band: pos.band, usedPct: pos.usedPct };
+    return res.status(200).json({ success: true, data: { ...data, credit } });
   } catch (error) {
     logger.error('clientAnalytics error:', error);
     return res.status(500).json({ success: false, message: 'Failed to build client analytics' });
@@ -427,12 +430,18 @@ export async function portfolioAnalytics(req, res) {
   }
 }
 
-/** GET /reports/clients/:clientId/credit — the credit banner on Add Order / order page (P1.15). */
+/**
+ * GET /reports/clients/:clientId/credit — the credit bar on Add Order, the order
+ * page and the client page. Amounts only for money roles (payments.view);
+ * everyone else with creditScore.view gets the band alone.
+ */
 export async function clientCredit(req, res) {
   try {
     const client = await db.client.findFirst({ where: { clientId: req.params.clientId, isDeleted: false }, select: { id: true } });
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
-    return res.status(200).json({ success: true, data: await getCreditPosition(client.id) });
+    const pos = await getCreditPosition(client.id);
+    const seesAmounts = hasPermission(req.access, 'payments.view');
+    return res.status(200).json({ success: true, data: seesAmounts ? pos : { band: pos.band, usedPct: pos.usedPct } });
   } catch (error) {
     logger.error('clientCredit error:', error);
     return res.status(500).json({ success: false, message: 'Failed to load credit' });

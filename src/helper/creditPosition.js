@@ -1,4 +1,5 @@
 import db from '../config/database.js';
+import { ACTIVE_STATUSES } from './orderStatus.js';
 
 /**
  * getCreditPosition — THE credit numbers (W18, v2 for Phase 2). The client app,
@@ -13,6 +14,29 @@ import db from '../config/database.js';
  *   available   = N + extra − used
  *   flag        = OVERDUE (any balance past due) | OVER_LIMIT | OK
  */
+/**
+ * Credit health for people who must not see amounts (panel roles, field techs,
+ * client contacts other than the Owner): a band and a 0–100 fill. Never blocks
+ * an order (2026-09-28): it only warns, and the team decides.
+ *   RED    = overdue, or already at/over the limit
+ *   ORANGE = 80 %+ used, or open orders would take it over the limit
+ *   GREEN  = the rest, and any client with no limit set
+ * ponytail: fixed 80 % line; move it to Settings if the office wants to tune it.
+ */
+export function creditBand({ flag, limit, used, pending = 0 }) {
+  const usedPct = limit > 0 ? Math.min(100, Math.max(0, Math.round((used / limit) * 100))) : 0;
+  const band = flag !== 'OK' ? 'RED'
+    : limit > 0 && (usedPct >= 80 || used + pending > limit) ? 'ORANGE'
+      : 'GREEN';
+  return { band, usedPct };
+}
+
+/** Band only — safe to send to anyone. */
+export async function getCreditBand(clientDbId) {
+  const { band, usedPct } = await getCreditPosition(clientDbId);
+  return { band, usedPct };
+}
+
 const PAYABLE = ['PENDING', 'SENT', 'OVERDUE', 'PARTIALLY_PAID'];
 const r2 = (n) => Math.round(n * 100) / 100;
 const qtyOf = (q) => { const n = parseFloat(String(q ?? '')); return Number.isFinite(n) && n > 0 ? n : 0; };
@@ -49,6 +73,7 @@ export async function getCreditPosition(clientDbId, now = new Date()) {
     db.order.findMany({
       where: { clientId: clientDbId, isDeleted: false, status: { not: 'CANCELLED' } },
       select: {
+        orderId: true, status: true, quantity: true,
         projectId: true, productName: true, productGrade: true, rate: true,
         bill: { select: { id: true, amount: true, status: true, dueDate: true, issueDate: true, isDeleted: true, allocations: { where: { isReversed: false }, select: { amount: true } } } },
         tmDetails: { where: { isDeleted: false, NOT: { challanUrl: null }, approvalStatus: { not: 'REJECTED' } }, select: { qty: true, deliveredAt: true, updatedAt: true } },
@@ -75,6 +100,15 @@ export async function getCreditPosition(clientDbId, now = new Date()) {
   const unbilledTrucks = orders.filter((o) => !o.bill || o.bill.isDeleted).flatMap((o) =>
     o.tmDetails.map((t) => ({ value: qtyOf(t.qty) * (o.rate ?? rates[`${o.projectId}|${o.productName}|${o.productGrade}`] ?? 0), at: t.deliveredAt || t.updatedAt })));
   const unbilled = unbilledTrucks.reduce((s, t) => s + t.value, 0);
+  // Open orders not yet counted: booked value minus trucks already in `unbilled`.
+  const pendingByOrder = Object.fromEntries(orders
+    .filter((o) => ACTIVE_STATUSES.includes(o.status) && (!o.bill || o.bill.isDeleted))
+    .map((o) => {
+      const rate = o.rate ?? rates[`${o.projectId}|${o.productName}|${o.productGrade}`] ?? 0;
+      const counted = o.tmDetails.reduce((s, t) => s + qtyOf(t.qty), 0);
+      return [o.orderId, r2(Math.max(0, qtyOf(o.quantity) - counted) * rate)];
+    }));
+  const pending = r2(Object.values(pendingByOrder).reduce((s, v) => s + v, 0));
   const outstanding = r2(billBalances - advance);
   const used = r2(outstanding + unbilled);
 
@@ -98,18 +132,25 @@ export async function getCreditPosition(clientDbId, now = new Date()) {
     return { projectId: p.projectId, projectName: p.projectName, outstanding: r2(mine.reduce((s, b) => s + b.amount - b.allocations.reduce((x, a) => x + a.amount, 0), 0)) };
   });
 
+  const flag = overdue.length ? 'OVERDUE' : limit > 0 && used >= limit + extra ? 'OVER_LIMIT' : 'OK';
+  const available = r2(limit + extra - used);
   return {
+    ...creditBand({ flag, limit: limit + extra, used, pending }),
     limit: r2(limit),
     creditDays,
     extraUnused, extraInUse, extra,
     outstanding, advance, unbilled: r2(unbilled), used,
-    available: r2(limit + extra - used),
+    available,
+    pending,
+    pendingByOrder,
+    // What stays free once every open order is delivered.
+    availableAfterPending: r2(available - pending),
     overdueAmount,
     overdueBillCount: overdue.length,
     oldestOverdueDays: overdue.reduce((m, b) => Math.max(m, Math.floor((now - new Date(b.dueDate)) / 864e5)), 0),
     nextDueDate: due[0] ?? null,
     daysLeft: due[0] ? Math.ceil((due[0] - now) / 864e5) : null,
-    flag: overdue.length ? 'OVERDUE' : limit > 0 && used >= limit + extra ? 'OVER_LIMIT' : 'OK',
+    flag,
     byProject,
   };
 }

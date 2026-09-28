@@ -7,8 +7,9 @@ import { createActivityLog } from '../../../helper/activityLogger.js';
 import { onOrderCompleted } from '../../../helper/orderCompletion.js';
 import { quantityError, priceListError } from '../../../helper/orderValidation.js';
 import { bookingSnapshot, creditGate } from '../../../helper/orderBooking.js';
+import { getCreditPosition, getCreditBand } from '../../../helper/creditPosition.js';
 import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow.js';
-import { orderProjectScope, projectScope } from '../../../helper/clientAccess.js';
+import { orderProjectScope, projectScope, isClientOwner } from '../../../helper/clientAccess.js';
 import { ACTIVE_STATUSES, PAST_STATUSES, FIELD_STATUSES, isActiveStatus, orderStatusBlocked } from '../../../helper/orderStatus.js';
 
 /** userIds of the techs assigned to an order — the WS emit target list. */
@@ -25,6 +26,7 @@ async function assignedTechUserIds(orderDbId) {
 const orderIsActive = isActiveStatus;
 
 /** Field-app builds before the single status sent a delivery step instead. */
+const r2 = (n) => Math.round(n * 100) / 100;
 const LEGACY_STEP_TO_STATUS = { IN_TRANSIT: 'DISPATCHED', REACHED: 'REACHED', DELIVERED: 'REACHED', COMPLETED: 'COMPLETED' };
 
 function buildOrderSelect() {
@@ -228,7 +230,20 @@ export async function clientGetOrder(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    return res.status(200).json({ success: true, data: formatOrder(order) });
+    // Everyone sees the band; only the Owner sees amounts and what this order
+    // does to them once delivered (e.g. ₹8,00,000 → ₹7,40,000).
+    const pos = await getCreditPosition(clientDbId);
+    const thisOrder = pos.pendingByOrder[orderId];
+    return res.status(200).json({
+      success: true,
+      data: {
+        ...formatOrder(order),
+        creditBand: pos.band,
+        ...(isClientOwner(req.clientAccess) && thisOrder > 0 && pos.limit > 0 && {
+          creditPreview: { available: pos.available, afterThisOrder: r2(pos.available - thisOrder), orderValue: thisOrder },
+        }),
+      },
+    });
   } catch (error) {
     logger.error('clientGetOrder error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -363,7 +378,7 @@ export async function clientCreateOrder(req, res) {
     return res.status(201).json({
       success: true,
       message: 'Order created successfully',
-      data: { orderId: order.orderId, id: order.id, creditHold: gate.hold, creditHoldReason: gate.reason },
+      data: { orderId: order.orderId, id: order.id, creditHold: false, creditBand: gate.band },
     });
   } catch (error) {
     logger.error('clientCreateOrder error:', error);
@@ -497,16 +512,18 @@ export async function techGetOrder(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    const order = await db.order.findFirst({
+    const { clientId: clientDbId, ...order } = await db.order.findFirst({
       where: { orderId, ...assignedToTech(userId), isDeleted: false },
-      select: buildOrderSelect(),
-    });
+      select: { ...buildOrderSelect(), clientId: true },
+    }) ?? {};
 
-    if (!order) {
+    if (!order.orderId) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    return res.status(200).json({ success: true, data: formatOrder(order) });
+    // Band only — a technician never sees the client's amounts.
+    const { band } = await getCreditBand(clientDbId);
+    return res.status(200).json({ success: true, data: { ...formatOrder(order), creditBand: band } });
   } catch (error) {
     logger.error('techGetOrder error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -539,9 +556,6 @@ export async function techUpdateStatus(req, res) {
     const blocked = orderStatusBlocked(order.status, status);
     if (blocked) {
       return res.status(409).json({ success: false, message: `Order ${orderId}: ${blocked}` });
-    }
-    if (order.creditHold) {
-      return res.status(409).json({ success: false, message: `Order ${orderId} is on credit hold — wait for the office to release it` });
     }
     const updated = await db.order.update({
       where: { id: order.id },

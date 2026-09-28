@@ -36,7 +36,8 @@ router.put('/orders/:orderId/cube-test/:cubeTestId', verifyClientToken, allow('c
 router.delete('/orders/:orderId/cube-test/:cubeTestId/attachments/:attachmentId', verifyClientToken, allow('cubeTests.manage'), cubeTestController.clientDeleteAttachment);
 
 // Money (P1.14, P1.16)
-router.get('/credit', verifyClientToken, allow('account.view'), clientController.getCredit);
+// Every contact sees the credit band; amounts only for the Owner (2026-09-28).
+router.get('/credit', verifyClientToken, clientController.getCredit);
 router.get('/bills', verifyClientToken, allow('bills.view'), clientController.listBills);
 router.get('/payments', verifyClientToken, allow('account.view'), clientController.listPayments);
 router.get('/ledger', verifyClientToken, allow('account.view'), clientController.getLedger);

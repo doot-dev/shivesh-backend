@@ -47,6 +47,12 @@ export function paymentBehaviour(bills, now = new Date(), payments = []) {
   const payMonths = firstPay ? Math.max(1, (now - firstPay) / (30 * DAY)) : null;
   const modes = {};
   for (const p of active) modes[p.mode] = (modes[p.mode] || 0) + 1;
+  // Late = paid after due, or still open past due. Days late counts only those,
+  // e.g. 25-day credit paid on day 45 = 20 days late.
+  const lateDays = [
+    ...dated.map((b) => Math.round((new Date(b.paidAt) - new Date(b.dueDate)) / DAY)),
+    ...open.filter((b) => b.dueDate).map((b) => Math.floor((now - new Date(b.dueDate)) / DAY)),
+  ].filter((d) => d > 0);
   const partPaid = live.filter((b) => b.status === 'PARTIALLY_PAID' || (b.allocations?.length || 0) > 1).length;
   return {
     payments: {
@@ -65,6 +71,9 @@ export function paymentBehaviour(bills, now = new Date(), payments = []) {
     outstanding: r2(outstanding),
     avgDaysToPay: avg(paid.filter((b) => b.issueDate).map((b) => Math.round((new Date(b.paidAt) - new Date(b.issueDate)) / DAY))),
     avgDaysPastDue: avg(dated.map((b) => Math.round((new Date(b.paidAt) - new Date(b.dueDate)) / DAY))),
+    lateCount: lateDays.length,
+    avgDaysLate: avg(lateDays),
+    maxDaysLate: lateDays.length ? Math.max(...lateDays) : null,
     onTimePct: dated.length ? Math.round((dated.filter((b) => new Date(b.paidAt) <= new Date(b.dueDate)).length / dated.length) * 100) : null,
     pendingByAge: ages,
     oldestOpenBill: oldest ? { billNo: oldest.billNo, days: Math.floor((now - new Date(oldest.issueDate)) / DAY) } : null,

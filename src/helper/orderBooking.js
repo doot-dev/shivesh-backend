@@ -22,18 +22,18 @@ export async function bookingSnapshot(projectDbId, productName, productGrade) {
 const inr = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 /**
- * Credit gate (W23 / D12). Hold the order when the client is overdue, or when
- * this order would take them past N + extra credit. A held order stays NEW and
- * can't be confirmed until someone with orders.approve releases it.
- * @returns {{ hold: boolean, reason: string|null, position: object }}
+ * Credit check at booking (W23). Since 2026-09-28 it NEVER holds an order: the
+ * people placing it see the credit band and decide among themselves. `warning`
+ * is the reason text for anyone allowed to see amounts.
+ * @returns {{ hold: false, reason: null, warning: string|null, band: string, position: object }}
  */
 export async function creditGate(clientDbId, orderValue) {
   const position = await getCreditPosition(clientDbId);
-  let reason = null;
+  let warning = null;
   if (position.flag === 'OVERDUE') {
-    reason = `${position.overdueBillCount} bill(s) overdue: ${inr(position.overdueAmount)}, oldest ${position.oldestOverdueDays} days past due`;
+    warning = `${position.overdueBillCount} bill(s) overdue: ${inr(position.overdueAmount)}, oldest ${position.oldestOverdueDays} days past due`;
   } else if (position.limit > 0 && position.used + (orderValue || 0) > position.limit + position.extra) {
-    reason = `Limit ${inr(position.limit + position.extra)} (incl. extra), used ${inr(position.used)}, this order ${inr(orderValue || 0)}`;
+    warning = `Limit ${inr(position.limit + position.extra)} (incl. extra), used ${inr(position.used)}, this order ${inr(orderValue || 0)}`;
   }
-  return { hold: Boolean(reason), reason, position };
+  return { hold: false, reason: null, warning, band: position.band, position };
 }

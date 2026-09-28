@@ -6,7 +6,7 @@ import { buildInvoicePdf } from '../../../helper/invoicePdf.js';
 import { productByName } from '../../../helper/productUnits.js';
 import { invoiceOrderInclude } from '../../admin/controllers/billController.js';
 import logger from '../../../helper/logger.js';
-import { projectScope, orderProjectScope, contactMaySee } from '../../../helper/clientAccess.js';
+import { projectScope, orderProjectScope, contactMaySee, isClientOwner, hasClientPermission } from '../../../helper/clientAccess.js';
 import {
   registerDeviceToken,
   removeDeviceToken,
@@ -119,8 +119,6 @@ export async function getProjects(req, res) {
           siteName: true,
           projectLocation: true,
           status: true,
-          creditAmount: true,
-          creditResetPeriodDays: true,
         },
         orderBy: { createdAt: 'desc' },
         skip: (pageNum - 1) * limitNum,
@@ -238,8 +236,6 @@ export async function getProjectDetail(req, res) {
         projectManager: true,
         address: true,
         status: true,
-        creditAmount: true,
-        creditResetPeriodDays: true,
         createdAt: true,
       },
     });
@@ -306,10 +302,19 @@ export async function markNotificationRead(req, res) {
 
 // ─── Client money: credit, bills, invoice (P1.14, P1.16) ─────────────────────
 
-/** GET /client/credit — the client's real credit position (replaces the fake app figures, W17). */
+/**
+ * GET /client/credit — the Owner gets the full position (W17); every other
+ * contact gets only the band and fill, never the limit or amounts.
+ */
 export async function getCredit(req, res) {
   try {
-    return res.status(200).json({ success: true, data: await getCreditPosition(req.user.data.id) });
+    const pos = await getCreditPosition(req.user.data.id);
+    const { band, usedPct, outstanding, overdueAmount, overdueBillCount, advance, nextDueDate, daysLeft, creditDays } = pos;
+    // Accounts people still see what is due (it is on their bills anyway), never the limit.
+    const dues = hasClientPermission(req.clientAccess, 'account.view')
+      && { outstanding, overdueAmount, overdueBillCount, advance, nextDueDate, daysLeft, creditDays };
+    const data = isClientOwner(req.clientAccess) ? pos : { band, usedPct, ...dues };
+    return res.status(200).json({ success: true, data });
   } catch (error) {
     logger.error('getCredit error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
