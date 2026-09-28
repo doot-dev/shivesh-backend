@@ -3,6 +3,7 @@ import logger from "../../../helper/logger.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { recordPayment, adjustFromAdvance, reversePayment, openBills, unallocatedOf, r2 } from "../../../helper/payments.js";
 import { getCreditPosition } from "../../../helper/creditPosition.js";
+import { sendStatement } from "../../../helper/ledgerStatement.js";
 
 /**
  * Payments, client account, credit settings and extra credit (Phase 2).
@@ -143,6 +144,13 @@ export async function clientLedger(req, res) {
   const client = await clientByCode(req.params.clientId);
   if (!client) return res.status(404).json({ success: false, message: "Client not found" });
   return res.json({ success: true, data: await buildLedger(client.id, req.query) });
+}
+
+/** GET /client/:clientId/ledger/statement?from&to&format=json|pdf|xlsx — Tally-style ledger. */
+export async function clientLedgerStatement(req, res) {
+  const client = await clientByCode(req.params.clientId);
+  if (!client) return res.status(404).json({ success: false, message: "Client not found" });
+  return sendStatement(res, client.id, req.query);
 }
 
 /** PUT /client/:clientId/credit — { creditLimit, creditDays } (W24). */

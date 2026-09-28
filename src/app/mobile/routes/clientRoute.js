@@ -1,3 +1,4 @@
+import { sendStatement } from '../../../helper/ledgerStatement.js';
 import { Router } from 'express';
 import * as clientController from '../controllers/clientController.js';
 import * as orderController from '../controllers/orderController.js';
@@ -41,6 +42,7 @@ router.get('/credit', verifyClientToken, clientController.getCredit);
 router.get('/bills', verifyClientToken, allow('bills.view'), clientController.listBills);
 router.get('/payments', verifyClientToken, allow('account.view'), clientController.listPayments);
 router.get('/ledger', verifyClientToken, allow('account.view'), clientController.getLedger);
+router.get('/ledger/statement', verifyClientToken, allow('account.view'), (req, res) => sendStatement(res, req.user.data.id, req.query));
 router.get('/bills/:billNo/invoice', verifyClientToken, allow('bills.view'), clientController.downloadBillInvoice);
 
 // Notifications

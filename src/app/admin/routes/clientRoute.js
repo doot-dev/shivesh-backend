@@ -20,6 +20,7 @@ clientRoute.delete("/:clientId", verifyToken, requirePermission(can('clients', '
 // Phase 2: client account, ledger, credit settings (W24) and extra credit (W35).
 clientRoute.get("/:clientId/account", verifyToken, requirePermission(can('payments', 'view'), can('billing', 'view')), pc.clientAccount);
 clientRoute.get("/:clientId/ledger", verifyToken, requirePermission(can('payments', 'view'), can('billing', 'view')), pc.clientLedger);
+clientRoute.get("/:clientId/ledger/statement", verifyToken, requirePermission(can('payments', 'view'), can('billing', 'view')), pc.clientLedgerStatement);
 clientRoute.put("/:clientId/credit", verifyToken, requirePermission(can('clientCredit', 'update')), pc.updateClientCredit);
 clientRoute.post("/:clientId/credit-extra", verifyToken, requirePermission(can('orders', 'approve')), pc.grantExtraCredit);
 clientRoute.post("/:clientId/credit-extra/:id/revoke", verifyToken, requirePermission(can('orders', 'approve')), pc.revokeExtraCredit);
