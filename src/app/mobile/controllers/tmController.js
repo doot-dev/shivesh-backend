@@ -40,9 +40,9 @@ export async function createTm(req, res) {
     const { truckNo, qty, batchStartTime, batchEndTime, challanNo, challanUrl, dispatchTime, arrivalTime } = req.body;
     const userId = req.user.data.id;
 
-    // A site engineer rarely knows the plant's batch times — only the truck, qty and challan.
-    if (!truckNo || !qty || !challanNo || (!isClient(req) && (!batchStartTime || !batchEndTime))) {
-      return res.status(400).json({ success: false, message: isClient(req) ? 'Truck no., quantity and challan no. are required' : 'truckNo, qty, batchStartTime, batchEndTime and challanNo are required' });
+    // Same details from the site as from the field app (batch times from the challan).
+    if (!truckNo || !qty || !batchStartTime || !batchEndTime || !challanNo) {
+      return res.status(400).json({ success: false, message: 'Truck no., quantity, challan no. and batch start / end time are required' });
     }
 
     const order = await db.order.findFirst({
