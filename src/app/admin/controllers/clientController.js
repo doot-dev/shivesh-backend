@@ -88,10 +88,8 @@ export const createClient = async (req, res) => {
       ownerName,
       contactNumber,
       email,
-      hasGST,
       gstNumber,
       ownerPan,
-      ownerAadhaar,
       address,
       kycDocuments = [],
     } = req.body;
@@ -109,7 +107,7 @@ export const createClient = async (req, res) => {
     }
 
     // Check if GST number already exists (if provided)
-    if (hasGST && gstNumber) {
+    if (gstNumber) {
       const existingGST = await db.client.findFirst({
         where: { gstNumber, isDeleted: false },
       });
@@ -158,10 +156,9 @@ export const createClient = async (req, res) => {
           ownerName,
           contactNumber,
           email,
-          hasGST,
-          gstNumber: hasGST ? gstNumber : null,
+          hasGST: true, // every client has a GSTIN since 2026-09-28
+          gstNumber,
           ownerPan: ownerPan || null,
-          ownerAadhaar: ownerAadhaar || null,
           address,
           kycDocuments: {
             create: kycDocuments.map((doc, index) => ({
@@ -273,10 +270,8 @@ export const updateClient = async (req, res) => {
       ownerName,
       contactNumber,
       email,
-      hasGST,
       gstNumber,
       ownerPan,
-      ownerAadhaar,
       address,
       kycDocuments = [],
     } = req.body;
@@ -307,7 +302,7 @@ export const updateClient = async (req, res) => {
     }
 
     // Check if GST number is being changed and if it already exists
-    if (hasGST && gstNumber && gstNumber !== existingClient.gstNumber) {
+    if (gstNumber !== existingClient.gstNumber) {
       const gstExists = await db.client.findFirst({
         where: { gstNumber, isDeleted: false, NOT: { clientId } },
       });
@@ -327,10 +322,9 @@ export const updateClient = async (req, res) => {
         ownerName,
         contactNumber,
         email,
-        hasGST,
-        gstNumber: hasGST ? gstNumber : null,
+        hasGST: true,
+        gstNumber,
         ownerPan: ownerPan || null,
-        ownerAadhaar: ownerAadhaar || null,
         address,
       },
     });
@@ -530,6 +524,14 @@ export const uploadKYCDocuments = async (req, res) => {
 
     // Get document types from request body (if provided)
     const types = req.body.types ? JSON.parse(req.body.types) : [];
+
+    // KYC: the GST certificate is the one required document; the rest are optional.
+    const hasGstDoc = types.includes('gst')
+      || await db.kYCDocument.count({ where: { clientId: client.id, type: 'gst' } });
+    if (!hasGstDoc) {
+      for (const file of uploadedFiles) await deleteUploadedFile(clientId, file.filename);
+      return res.status(400).json({ success: false, message: "The GST certificate is required" });
+    }
 
     // Create KYC documents in database
     const documents = await Promise.all(

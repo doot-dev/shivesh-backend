@@ -253,7 +253,6 @@ model Client {
   hasGST        Boolean             @default(false)
   gstNumber     String?             @unique
   ownerPan      String?
-  ownerAadhaar  String?
   address       String              @db.Text
   status        ClientStatus        @default(ACTIVE)
   kycStatus     KYCStatus           @default(PENDING)

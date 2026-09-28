@@ -4,10 +4,9 @@ export const createClientValidation = {
   contactNumber: "required|regex:/^[0-9]{10}$/",
   email: "required|email",
   address: "required",
-  hasGST: "required|boolean",
-  gstNumber: "required_if:hasGST,true",
+  // 2026-09-28: every client has a GSTIN; PAN optional; no Aadhaar.
+  gstNumber: "required|regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/",
   ownerPan: "regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/",
-  ownerAadhaar: "regex:/^[0-9]{12}$/",
 };
 
 export const updateClientValidation = {
@@ -16,10 +15,8 @@ export const updateClientValidation = {
   contactNumber: "required|regex:/^[0-9]{10}$/",
   email: "required|email",
   address: "required",
-  hasGST: "boolean",
-  gstNumber: "required_if:hasGST,true",
+  gstNumber: "required|regex:/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/",
   ownerPan: "regex:/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/",
-  ownerAadhaar: "regex:/^[0-9]{12}$/",
 };
 
 export const clientListValidation = {
