@@ -14,7 +14,7 @@ import {
 } from "../validations/orderValidation.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { onOrderCompleted } from "../../../helper/orderCompletion.js";
-import { orderStatusBlocked, isActiveStatus } from "../../../helper/orderStatus.js";
+import { orderStatusBlocked, isActiveStatus, PAST_STATUSES } from "../../../helper/orderStatus.js";
 
 /** "DISPATCHED" → "Dispatched" for messages people read. */
 const statusLabel = (s) => s.charAt(0) + s.slice(1).toLowerCase();
@@ -261,6 +261,11 @@ export async function listOrders(req, res) {
       }),
       db.order.count({ where }),
     ]);
+
+    // Newest first, but completed/cancelled sink below the live ones (2026-09-28).
+    // ponytail: per page — the panel asks for 500 in a date window, so that is the whole list.
+    const done = (o) => (PAST_STATUSES.includes(o.status) ? 1 : 0);
+    orders.sort((a, b) => done(a) - done(b));
 
     return res
       .status(200)
