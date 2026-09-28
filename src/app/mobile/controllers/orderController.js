@@ -547,9 +547,9 @@ export async function techGetOrder(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // Band only — a technician never sees the client's amounts.
-    const { band } = await getCreditBand(clientDbId);
-    return res.status(200).json({ success: true, data: { ...formatOrder(order), creditBand: band } });
+    // Band and fill only — a technician never sees the client's amounts.
+    const { band, usedPct } = await getCreditBand(clientDbId);
+    return res.status(200).json({ success: true, data: { ...formatOrder(order), creditBand: band, creditUsedPct: usedPct } });
   } catch (error) {
     logger.error('techGetOrder error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
