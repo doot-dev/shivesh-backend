@@ -72,6 +72,7 @@ export function paymentBehaviour(bills, now = new Date(), payments = []) {
     avgDaysToPay: avg(paid.filter((b) => b.issueDate).map((b) => Math.round((new Date(b.paidAt) - new Date(b.issueDate)) / DAY))),
     avgDaysPastDue: avg(dated.map((b) => Math.round((new Date(b.paidAt) - new Date(b.dueDate)) / DAY))),
     lateCount: lateDays.length,
+    onTimeCount: dated.filter((b) => new Date(b.paidAt) <= new Date(b.dueDate)).length,
     avgDaysLate: avg(lateDays),
     maxDaysLate: lateDays.length ? Math.max(...lateDays) : null,
     onTimePct: dated.length ? Math.round((dated.filter((b) => new Date(b.paidAt) <= new Date(b.dueDate)).length / dated.length) * 100) : null,
