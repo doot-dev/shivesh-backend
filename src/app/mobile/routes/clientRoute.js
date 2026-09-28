@@ -8,6 +8,7 @@ import * as teamController from '../controllers/clientTeamController.js';
 import { verifyClientToken } from '../middleware/mobileAuth.js';
 import { requireClientPermission as allow } from '../../../helper/clientAccess.js';
 import { uploadCubeTestFiles } from '../../../config/cubeTestUploadConfig.js';
+import { uploadSingleOrderChallan } from '../../../config/challanUploadConfig.js';
 
 const router = Router();
 
@@ -57,6 +58,9 @@ router.get('/orders/:orderId/comments', verifyClientToken, allow('orders.view'),
 router.post('/orders/:orderId/comments', verifyClientToken, allow('orders.comment'), orderController.addComment);
 router.post('/orders/:orderId/cancel', verifyClientToken, allow('orders.cancel'), orderController.clientCancelOrder);
 router.post('/orders/:orderId/tm/:tmId/reject', verifyClientToken, allow('trucks.reject'), tmController.clientRejectTm);
+// The site adds trucks with their challan (2026-09-29); the photo is uploaded after the permission check.
+router.post('/orders/:orderId/tm', verifyClientToken, allow('trucks.add'), uploadSingleOrderChallan, tmController.createTm);
+router.put('/orders/:orderId/tm/:tmId', verifyClientToken, allow('trucks.add'), uploadSingleOrderChallan, tmController.updateTm);
 
 // Team (docs/06, Q1): the owner adds site engineers and accounts people.
 router.get('/team', verifyClientToken, allow('team.manage'), teamController.listTeam);

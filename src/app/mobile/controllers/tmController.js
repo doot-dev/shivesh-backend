@@ -5,7 +5,7 @@ import { sendNotification, notifyAdmins } from '../../../helper/notificationHelp
 import { createActivityLog } from '../../../helper/activityLogger.js';
 import { rejectIfLocked } from '../../../helper/updateWindow.js';
 import { getOrderChallanPublicUrl } from '../../../config/challanUploadConfig.js';
-import { techOrderScope } from '../../../helper/techAccess.js';
+import { techOrderScope, orderTechUserIds } from '../../../helper/techAccess.js';
 
 // ─── Create TM detail ─────────────────────────────────────────────────────────
 
@@ -22,18 +22,31 @@ import { techOrderScope } from '../../../helper/techAccess.js';
  * is optional — the numbers can be logged first and the photo attached later
  * through updateTm.
  */
+/**
+ * Whose truck edits these are (2026-09-29): a field tech's (their projects'
+ * orders) or a client contact's with trucks.add (their own orders/projects).
+ */
+const isClient = (req) => req.user?.data?.type === 'CLIENT';
+const callerOrderScope = (req) => (isClient(req)
+  ? { clientId: req.user.data.id, ...orderProjectScope(req.clientAccess) }
+  : techOrderScope(req.user.data.id));
+const actorFor = (req) => (isClient(req)
+  ? { createdById: null, actorType: 'CLIENT_CONTACT', actorId: req.clientAccess?.contact?.id ?? req.user.data.id, source: 'CLIENT_APP' }
+  : { createdById: Number(req.user.data.id) });
+
 export async function createTm(req, res) {
   try {
     const { orderId } = req.params;
     const { truckNo, qty, batchStartTime, batchEndTime, challanNo, challanUrl, dispatchTime, arrivalTime } = req.body;
     const userId = req.user.data.id;
 
-    if (!truckNo || !qty || !batchStartTime || !batchEndTime || !challanNo) {
-      return res.status(400).json({ success: false, message: 'truckNo, qty, batchStartTime, batchEndTime and challanNo are required' });
+    // A site engineer rarely knows the plant's batch times — only the truck, qty and challan.
+    if (!truckNo || !qty || !challanNo || (!isClient(req) && (!batchStartTime || !batchEndTime))) {
+      return res.status(400).json({ success: false, message: isClient(req) ? 'Truck no., quantity and challan no. are required' : 'truckNo, qty, batchStartTime, batchEndTime and challanNo are required' });
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, ...techOrderScope(userId), isDeleted: false },
+      where: { orderId, ...callerOrderScope(req), isDeleted: false },
     });
 
     if (!order) {
@@ -61,8 +74,8 @@ export async function createTm(req, res) {
         tmNumber,
         truckNo,
         qty,
-        batchStartTime,
-        batchEndTime,
+        batchStartTime: batchStartTime || null,
+        batchEndTime: batchEndTime || null,
         challanNo,
         dispatchTime: dispatchTime || null,
         arrivalTime: arrivalTime || null,
@@ -73,24 +86,34 @@ export async function createTm(req, res) {
     });
 
     await createActivityLog({
-      title: 'TM added (field app)',
+      title: isClient(req) ? 'TM added (client app)' : 'TM added (field app)',
       description: `${tmNumber} (${truckNo}) added to order ${orderId}, qty ${qty}, challan ${challanNo}${tm.challanUrl ? " with photo" : ""}`,
       entityType: 'ORDER',
       entityId: order.id,
       action: 'UPDATED',
-      createdById: Number(userId),
+      ...actorFor(req),
     });
 
-    // Notify client (DB row + push to their registered devices)
-    await sendNotification({
-      targetType: 'CLIENT',
-      targetId: order.clientId,
-      title: 'TM Details Added',
-      message: `Truck ${truckNo} details added for your order ${orderId}`,
-      type: 'STATUS_UPDATED',
-      relatedId: order.id,
-      orderId: order.id,
-    });
+    if (isClient(req)) {
+      // The site added it: tell the office and the project's FTs to check the challan.
+      const who = req.clientAccess?.contact?.name ?? 'The client';
+      await notifyAdmins({ title: 'Truck added by the site', message: `${who} added truck ${truckNo} (${qty}) with challan ${challanNo} to ${orderId}`, type: 'STATUS_UPDATED', relatedId: order.id, orderId: order.id });
+      await Promise.all((await orderTechUserIds(order.id)).map((id) => sendNotification({
+        targetType: 'FIELD_TECH', targetId: String(id), title: 'Truck added by the site',
+        message: `${who} added truck ${truckNo} to ${orderId}`, type: 'STATUS_UPDATED', relatedId: order.id, orderId: order.id,
+      })));
+    } else {
+      // Notify client (DB row + push to their registered devices)
+      await sendNotification({
+        targetType: 'CLIENT',
+        targetId: order.clientId,
+        title: 'TM Details Added',
+        message: `Truck ${truckNo} details added for your order ${orderId}`,
+        type: 'STATUS_UPDATED',
+        relatedId: order.id,
+        orderId: order.id,
+      });
+    }
 
     return res.status(201).json({ success: true, data: tm });
   } catch (error) {
@@ -114,7 +137,7 @@ export async function updateTm(req, res) {
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
-      where: { orderId, ...techOrderScope(userId), isDeleted: false },
+      where: { orderId, ...callerOrderScope(req), isDeleted: false },
     });
 
     if (!order) {
@@ -167,7 +190,7 @@ export async function updateTm(req, res) {
       entityType: 'ORDER',
       entityId: order.id,
       action: 'UPDATED',
-      createdById: Number(userId),
+      ...actorFor(req),
     });
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
