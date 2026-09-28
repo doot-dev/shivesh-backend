@@ -6,6 +6,7 @@ import {
   clientListValidation,
 } from "../validations/clientValidation.js";
 import db from "../../../config/database.js";
+import { hasPermission } from "../../../helper/accessControl.js";
 import logger from "../../../helper/logger.js";
 import { createActivityLog } from "../../../helper/activityLogger.js";
 import { getPublicUrl, deleteUploadedFile } from "../../../config/multerConfig.js";
@@ -240,6 +241,12 @@ export const getClientDetails = async (req, res) => {
 
     // Remove internal fields from response
     const { id, isDeleted, ...clientData } = client;
+    // Sub-module access (2026-09-28): KYC files and credit terms only for those allowed.
+    if (!hasPermission(req.access, 'clientKyc.view')) delete clientData.kycDocuments;
+    if (!hasPermission(req.access, 'clientCredit.view')) {
+      delete clientData.creditLimit;
+      delete clientData.creditDays;
+    }
 
     return res.status(200).json({
       success: true,

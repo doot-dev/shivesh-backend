@@ -21,6 +21,6 @@ router.get('/ca-pack', verifyToken, requirePermission(can('reports', 'export')),
 router.get('/analytics', verifyToken, requirePermission(can('reports', 'view')), reportController.portfolioAnalytics);
 router.get('/clients/:clientId/analytics', verifyToken, requirePermission(can('reports', 'view')), reportController.clientAnalytics);
 // Credit is needed while booking an order, so orders.create may read it too.
-router.get('/clients/:clientId/credit', verifyToken, requirePermission(can('creditScore', 'view'), can('reports', 'view'), can('payments', 'view')), reportController.clientCredit);
+router.get('/clients/:clientId/credit', verifyToken, requirePermission(can('creditScore', 'view'), can('creditAmounts', 'view')), reportController.clientCredit);
 
 export default router;

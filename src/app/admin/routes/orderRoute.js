@@ -46,7 +46,7 @@ router.post('/:orderId/credit-release', verifyToken, requirePermission(can('orde
 
 // Order routes
 router.get('/cube-tests', verifyToken, requirePermission(can('cubeTests', 'view')), cubeTestController.listAllCubeTests);
-router.get('/field-techs', verifyToken, requirePermission(can('orders', 'view')), orderController.listFieldTechs);
+router.get('/field-techs', verifyToken, requirePermission() /* lookup: any signed-in user */, orderController.listFieldTechs);
 router.get('/', verifyToken, requirePermission(can('orders', 'view')), orderController.listOrders);
 router.post('/', verifyToken, requirePermission(can('orders', 'create')), orderController.createOrder);
 router.get('/:orderId', verifyToken, requirePermission(can('orders', 'view')), orderController.getOrder);

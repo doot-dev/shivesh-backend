@@ -8,7 +8,7 @@ const userData = Router();
 userData.post('/', verifyToken, requirePermission(can('users', 'create')), userController.createUser);
 // Orders need the technician list to assign field staff, so users.view is not
 // the only way in here — otherwise an order manager could not pick a tech.
-userData.get('/all', verifyToken, requirePermission(can('users', 'view'), can('orders', 'view')), userController.getAllUsers);
+userData.get('/all', verifyToken, requirePermission(can('users', 'view'), can('orders', 'view'), can('leads', 'view')), userController.getAllUsers);
 userData.get('/', verifyToken, requirePermission(can('users', 'view')), userController.getUser);
 userData.put('/', verifyToken, requirePermission(can('users', 'update')), userController.updateUser);
 userData.delete('/', verifyToken, requirePermission(can('users', 'delete')), userController.deleteUser);

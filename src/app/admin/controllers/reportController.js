@@ -411,8 +411,7 @@ export async function clientAnalytics(req, res) {
     const data = await getClientAnalytics(req.params.clientId);
     if (!data) return res.status(404).json({ success: false, message: 'Client not found' });
     const client = await db.client.findFirst({ where: { clientId: req.params.clientId }, select: { id: true } });
-    const pos = await getCreditPosition(client.id);
-    const credit = hasPermission(req.access, 'payments.view') ? pos : { band: pos.band, usedPct: pos.usedPct, position: pos.position };
+    const credit = creditFor(req.access, await getCreditPosition(client.id));
     return res.status(200).json({ success: true, data: { ...data, credit } });
   } catch (error) {
     logger.error('clientAnalytics error:', error);
@@ -431,17 +430,23 @@ export async function portfolioAnalytics(req, res) {
 }
 
 /**
- * GET /reports/clients/:clientId/credit — the credit bar on Add Order, the order
- * page and the client page. Amounts only for money roles (payments.view);
- * everyone else with creditScore.view gets the band alone.
+ * What of a credit position this person may see (2026-09-28): the gauge with
+ * creditScore.view, the ₹ figures with creditAmounts.view, both, or neither.
  */
+function creditFor(access, pos) {
+  const { band, usedPct, position, ...amounts } = pos;
+  return {
+    ...(hasPermission(access, 'creditScore.view') && { band, usedPct, position }),
+    ...(hasPermission(access, 'creditAmounts.view') && amounts),
+  };
+}
+
+/** GET /reports/clients/:clientId/credit — the credit gauge on Add Order, the order page and the client page. */
 export async function clientCredit(req, res) {
   try {
     const client = await db.client.findFirst({ where: { clientId: req.params.clientId, isDeleted: false }, select: { id: true } });
     if (!client) return res.status(404).json({ success: false, message: 'Client not found' });
-    const pos = await getCreditPosition(client.id);
-    const seesAmounts = hasPermission(req.access, 'payments.view');
-    return res.status(200).json({ success: true, data: seesAmounts ? pos : { band: pos.band, usedPct: pos.usedPct, position: pos.position } });
+    return res.status(200).json({ success: true, data: creditFor(req.access, await getCreditPosition(client.id)) });
   } catch (error) {
     logger.error('clientCredit error:', error);
     return res.status(500).json({ success: false, message: 'Failed to load credit' });
