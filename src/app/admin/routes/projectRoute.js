@@ -16,6 +16,7 @@ import {
   getProjectProductVendors,
   updateProjectProductVendor,
   deleteProjectProductVendor,
+  setProjectTechnicians,
 } from "../controllers/projectController.js";
 import { verifyToken } from "../../../config/jwtConfig.js";
 import { requirePermission, can } from "../../../helper/accessControl.js";
@@ -28,6 +29,8 @@ router.post("/product/vendor/create", verifyToken, requirePermission(can('projec
 router.get("/:projectId/product/:productId/vendor/list", verifyToken, requirePermission(can('projects', 'view')), getProjectProductVendors);
 router.put("/product/vendor", verifyToken, requirePermission(can('projects', 'update')), updateProjectProductVendor);
 router.delete("/:projectId/product/:productId/vendor/:productVendorId", verifyToken, requirePermission(can('projects', 'update')), deleteProjectProductVendor);
+
+router.put("/:projectId/technicians", verifyToken, requirePermission(can('projects', 'update')), setProjectTechnicians);
 
 // Project Product routes
 router.post("/product/create", verifyToken, requirePermission(can('projects', 'update')), createProjectProduct);

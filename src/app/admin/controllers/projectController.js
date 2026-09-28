@@ -211,6 +211,10 @@ export const getProjectDetails = async (req, res) => {
             email: true,
           },
         },
+        technicians: {
+          orderBy: { createdAt: "asc" },
+          select: { user: { select: { id: true, name: true, employeeId: true, phone: true } } },
+        },
         projectProducts: {
           include: {
             vendors: {
@@ -1340,5 +1344,40 @@ export const deleteProjectProductVendor = async (req, res) => {
       message: "Failed to delete vendor",
       error: error.message,
     });
+  }
+};
+
+// ─── Project field technicians (2026-09-28) ───────────────────────────────────
+// Every FT on a project sees and works all of its orders (helper/techAccess.js).
+
+/** PUT /project/:projectId/technicians  { userIds: number[] } — replaces the list. */
+export const setProjectTechnicians = async (req, res) => {
+  try {
+    const project = await db.project.findFirst({ where: { projectId: req.params.projectId, isDeleted: false }, select: { id: true, projectName: true } });
+    if (!project) return res.status(404).json({ success: false, message: "Project not found" });
+    const ids = [...new Set((req.body.userIds || []).map(Number).filter(Number.isInteger))];
+    const techs = await db.user.findMany({ where: { id: { in: ids }, role: "FIELD_TECHNICIAN", isDeleted: false }, select: { id: true, name: true } });
+    if (techs.length !== ids.length) return res.status(400).json({ success: false, message: "Only active field technicians can be added" });
+
+    await db.$transaction([
+      db.projectTechnician.deleteMany({ where: { projectId: project.id, userId: { notIn: ids } } }),
+      ...ids.map((userId) => db.projectTechnician.upsert({
+        where: { projectId_userId: { projectId: project.id, userId } },
+        create: { projectId: project.id, userId },
+        update: {},
+      })),
+    ]);
+    await createActivityLog({
+      title: "Project technicians updated",
+      description: `${project.projectName}: ${techs.map((t) => t.name).join(", ") || "none"}`,
+      entityType: "PROJECT",
+      entityId: project.id,
+      action: "UPDATED",
+      createdById: Number(req.user?.data?.id) || null,
+    });
+    return res.status(200).json({ success: true, message: "Technicians updated", data: techs });
+  } catch (error) {
+    logger.error("setProjectTechnicians error:", error);
+    return res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };

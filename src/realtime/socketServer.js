@@ -23,6 +23,7 @@ import db from '../config/database.js';
 import { decrypt } from '../helper/security.js';
 import logger from '../helper/logger.js';
 import { loadClientAccess, orderProjectScope } from '../helper/clientAccess.js';
+import { techOrderScope } from '../helper/techAccess.js';
 
 const { verify } = jsonwebtoken;
 
@@ -105,7 +106,7 @@ async function canAccessOrder(user, orderId, access) {
       where: {
         orderId,
         isDeleted: false,
-        technicians: { some: { userId: Number(user.id), isDeleted: false } },
+        ...techOrderScope(user.id),
       },
       select: { id: true },
     });

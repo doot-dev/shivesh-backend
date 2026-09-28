@@ -135,6 +135,26 @@ export async function getProjects(req, res) {
 }
 // ─── Products for order creation ─────────────────────────────────────────────
 
+/** A project's price-list lines with unit (W38) — shared with the field app. */
+export async function productsForProject(projectDbId) {
+  const products = await db.projectProduct.findMany({
+    where: { projectId: projectDbId },
+    select: { productName: true, productGrade: true },
+    orderBy: { productName: 'asc' },
+  });
+  const units = Object.fromEntries(
+    (await db.product.findMany({
+      where: { name: { in: [...new Set(products.map((p) => p.productName))] }, isDeleted: false },
+      select: { name: true, unit: true, isConcrete: true },
+    })).map((p) => [p.name, p]),
+  );
+  return products.map((p) => ({
+    ...p,
+    unit: units[p.productName]?.unit ?? 'CBM',
+    isConcrete: units[p.productName]?.isConcrete ?? true,
+  }));
+}
+
 export async function getProjectProducts(req, res) {
   try {
     const clientDbId = req.user.data.id;
@@ -150,24 +170,7 @@ export async function getProjectProducts(req, res) {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
 
-    const products = await db.projectProduct.findMany({
-      where: { projectId: project.id },
-      select: { productName: true, productGrade: true },
-      orderBy: { productName: 'asc' },
-    });
-
-    // W38: each product carries its unit so the app stops assuming "m3".
-    const units = Object.fromEntries(
-      (await db.product.findMany({
-        where: { name: { in: [...new Set(products.map((p) => p.productName))] }, isDeleted: false },
-        select: { name: true, unit: true, isConcrete: true },
-      })).map((p) => [p.name, p]),
-    );
-    const data = products.map((p) => ({
-      ...p,
-      unit: units[p.productName]?.unit ?? 'CBM',
-      isConcrete: units[p.productName]?.isConcrete ?? true,
-    }));
+    const data = await productsForProject(project.id);
 
     return res.status(200).json({ success: true, data });
   } catch (error) {

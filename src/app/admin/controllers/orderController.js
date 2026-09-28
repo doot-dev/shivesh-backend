@@ -23,19 +23,13 @@ import { quantityError, priceListError } from "../../../helper/orderValidation.j
 import { bookingSnapshot, creditGate } from "../../../helper/orderBooking.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
+import { orderTechUserIds } from "../../../helper/techAccess.js";
 import {
   sendNotification,
   notifyAdmins,
 } from "../../../helper/notificationHelper.js";
 
-/** userIds of the techs assigned to an order — the WS emit target list. */
-async function assignedTechUserIds(orderDbId) {
-  const rows = await db.orderTechnician.findMany({
-    where: { orderId: orderDbId, isDeleted: false },
-    select: { userId: true },
-  });
-  return rows.map((r) => r.userId);
-}
+const assignedTechUserIds = orderTechUserIds;
 
 /**
  * Normalise one TM from a request body into Prisma create data.
@@ -178,16 +172,14 @@ async function resolveVendorSelection({
  * FCM push at all, so techs only ever saw order updates by opening the app.
  */
 async function notifyOrderTechnicians(order, { title, message, type }) {
-  const technicians = await db.orderTechnician.findMany({
-    where: { orderId: order.id, isDeleted: false },
-    select: { userId: true },
-  });
+  // Project FTs + the order's contact persons (2026-09-28).
+  const techIds = await orderTechUserIds(order.id);
 
   await Promise.all(
-    technicians.map((t) =>
+    techIds.map((userId) =>
       sendNotification({
         targetType: "FIELD_TECH",
-        targetId: String(t.userId),
+        targetId: String(userId),
         title,
         message,
         type,
@@ -494,8 +486,8 @@ export async function createOrder(req, res) {
 
     // Notify every assigned field tech
     await notifyOrderTechnicians(order, {
-      title: "New Order Assigned",
-      message: `You have been assigned to order ${orderId} — ${productName} ${productGrade} (${quantity})`,
+      title: "New order",
+      message: `${orderId} for ${client.companyName || "a client"} — ${productName} ${productGrade} (${quantity})`,
       type: "ORDER_CREATED",
     });
 
@@ -518,19 +510,9 @@ export async function createOrder(req, res) {
       createdById: Number(req.user?.data?.id) || null,
     });
 
-    if (gate.hold) {
-      await notifyAdmins({
-        title: "Order on credit hold",
-        message: `${orderId} is on credit hold — ${gate.reason}. Release or cancel it.`,
-        type: "CREDIT_HOLD",
-        relatedId: order.id,
-        orderId: order.id,
-      });
-    }
-
     return res
       .status(201)
-      .json({ success: true, message: gate.hold ? "Order created — on credit hold" : "Order created", data: order });
+      .json({ success: true, message: "Order created", data: order, creditBand: gate.band });
   } catch (error) {
     console.log("createOrder error:", error);
     logger.error("admin createOrder error:", error);

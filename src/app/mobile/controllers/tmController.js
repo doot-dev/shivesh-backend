@@ -5,6 +5,7 @@ import { sendNotification, notifyAdmins } from '../../../helper/notificationHelp
 import { createActivityLog } from '../../../helper/activityLogger.js';
 import { rejectIfLocked } from '../../../helper/updateWindow.js';
 import { getOrderChallanPublicUrl } from '../../../config/challanUploadConfig.js';
+import { techOrderScope } from '../../../helper/techAccess.js';
 
 // ─── Create TM detail ─────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ export async function createTm(req, res) {
     }
 
     const order = await db.order.findFirst({
-      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
+      where: { orderId, ...techOrderScope(userId), isDeleted: false },
     });
 
     if (!order) {
@@ -113,7 +114,7 @@ export async function updateTm(req, res) {
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
-      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
+      where: { orderId, ...techOrderScope(userId), isDeleted: false },
     });
 
     if (!order) {
@@ -183,7 +184,7 @@ export async function deleteTm(req, res) {
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
-      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
+      where: { orderId, ...techOrderScope(userId), isDeleted: false },
     });
 
     if (!order) {
@@ -235,7 +236,7 @@ export async function markTmReached(req, res) {
     const userId = req.user.data.id;
 
     const order = await db.order.findFirst({
-      where: { orderId, technicians: { some: { userId, isDeleted: false } }, isDeleted: false },
+      where: { orderId, ...techOrderScope(userId), isDeleted: false },
     });
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 

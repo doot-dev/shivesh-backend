@@ -17,26 +17,27 @@ datasource db {
 /// `menuAccess` is the LEGACY pre-IAM menu list; nothing reads it for access
 /// decisions any more, it is kept only so old rows still load.
 model User {
-  id                  Int               @id @default(autoincrement())
+  id                  Int                 @id @default(autoincrement())
   name                String
   employeeId          String
   userName            String
   password            String
   role                UserRole
-  status              Boolean           @default(true)
-  createdAt           DateTime          @default(now())
-  updatedAt           DateTime          @updatedAt
+  status              Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
   lastLoginAt         DateTime?
   menuAccess          Json?
-  isDeleted           Boolean           @default(false)
+  isDeleted           Boolean             @default(false)
   phone               String?
   roleId              Int?
-  isSuperAdmin        Boolean           @default(false)
-  activities          Activity[]        @relation("UserActivities")
-  assignedLeads       Lead[]            @relation("LeadAssignedTo")
-  assignedOrders      OrderTechnician[] @relation("OrderTechnicianUser")
-  roleRef             Role?             @relation("UserRoleRef", fields: [roleId], references: [id])
-  permissionOverrides UserPermission[]  @relation("UserPermissionOverrides")
+  isSuperAdmin        Boolean             @default(false)
+  activities          Activity[]          @relation("UserActivities")
+  assignedLeads       Lead[]              @relation("LeadAssignedTo")
+  assignedOrders      OrderTechnician[]   @relation("OrderTechnicianUser")
+  projectAssignments  ProjectTechnician[]
+  roleRef             Role?               @relation("UserRoleRef", fields: [roleId], references: [id])
+  permissionOverrides UserPermission[]    @relation("UserPermissionOverrides")
 
   @@index([roleId], map: "User_roleId_fkey")
 }
@@ -459,6 +460,7 @@ model Project {
   client                 Client                 @relation(fields: [clientId], references: [id])
   projectProducts        ProjectProduct[]
   contactScopes          ClientContactProject[]
+  technicians            ProjectTechnician[]
 
   @@index([clientId])
 }
@@ -860,4 +862,18 @@ enum KYCStatus {
   PENDING
   VERIFIED
   REJECTED
+}
+
+/// Field technicians on a project (2026-09-28): they see and work every order
+/// of the project. The per-order OrderTechnician is the client's contact person.
+model ProjectTechnician {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    Int
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+  @@index([userId])
 }

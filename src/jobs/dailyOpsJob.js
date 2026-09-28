@@ -29,7 +29,11 @@ async function sendOnce(target, key, title, message, orderId) {
   return 1;
 }
 
-const techsOf = (order) => order.technicians.filter((t) => !t.isDeleted).map((t) => ({ targetType: 'FIELD_TECH', targetId: t.userId }));
+// Contact persons + the project's field technicians, once each.
+const techsOf = (order) => [...new Set([
+  ...order.technicians.filter((t) => !t.isDeleted),
+  ...(order.project?.technicians ?? []),
+].map((t) => t.userId))].map((id) => ({ targetType: 'FIELD_TECH', targetId: id }));
 
 export async function runDailyOpsSweep(now = new Date()) {
   const today = todayIso(now);
@@ -39,7 +43,7 @@ export async function runDailyOpsSweep(now = new Date()) {
   // 1 + 2. Cube tests without a result.
   const tests = await db.cubeTest.findMany({
     where: { isDeleted: false, fileUrl: null, toDate: { lt: new Date(startToday.getTime() + 2 * DAY) }, order: { isDeleted: false } },
-    include: { order: { include: { technicians: true } } },
+    include: { order: { include: { technicians: true, project: { select: { technicians: true } } } } },
   });
   for (const ct of tests) {
     const dayDiff = Math.floor((new Date(ct.toDate).setHours(0, 0, 0, 0) - startToday) / DAY);
@@ -57,7 +61,7 @@ export async function runDailyOpsSweep(now = new Date()) {
   // 3. Completed but unbilled because of challans.
   const orders = await db.order.findMany({
     where: { isDeleted: false, status: 'COMPLETED', bill: null },
-    include: { tmDetails: { where: { isDeleted: false } }, technicians: true },
+    include: { tmDetails: { where: { isDeleted: false } }, technicians: true, project: { select: { technicians: true } } },
   });
   for (const o of orders) {
     const blocker = billBlocker(o.tmDetails);

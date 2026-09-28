@@ -5,6 +5,7 @@ import { sendNotification } from '../../../helper/notificationHelper.js';
 import { cubeTestStatus, withStatus } from '../../../helper/cubeTest.js';
 import { saveCubeTest, removeAttachment, uploadedFiles, WITH_ATTACHMENTS } from '../../../helper/cubeTestStore.js';
 import { createActivityLog } from '../../../helper/activityLogger.js';
+import { techOrderScope } from '../../../helper/techAccess.js';
 
 /**
  * Cube testing reports as seen by the FIELD TECHNICIAN app.
@@ -27,7 +28,7 @@ function assignedOrder(orderId, userId) {
     where: {
       orderId,
       isDeleted: false,
-      technicians: { some: { userId, isDeleted: false } },
+      ...techOrderScope(userId),
     },
   });
 }
@@ -154,7 +155,7 @@ export async function listAllCubeTests(req, res) {
     where.order = {
       ...(where.order ?? {}),
       isDeleted: false,
-      technicians: { some: { userId, isDeleted: false } },
+      ...techOrderScope(userId),
     };
 
     const cubeTests = await db.cubeTest.findMany({

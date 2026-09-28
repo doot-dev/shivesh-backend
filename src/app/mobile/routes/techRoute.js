@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as techController from '../controllers/techController.js';
 import * as orderController from '../controllers/orderController.js';
+import * as adminOrders from '../../admin/controllers/orderController.js';
 import * as tmController from '../controllers/tmController.js';
 import * as cubeTestController from '../controllers/cubeTestController.js';
 import { verifyTechToken } from '../middleware/mobileAuth.js';
@@ -15,6 +16,16 @@ router.put('/fcm-token', verifyTechToken, techController.registerFcmToken);
 router.delete('/fcm-token', verifyTechToken, techController.unregisterFcmToken);
 router.get('/notifications', verifyTechToken, techController.getNotifications);
 router.put('/notifications/:notificationId/read', verifyTechToken, techController.markNotificationRead);
+
+// Projects this FT is on, and booking an order for one (2026-09-28)
+router.get('/projects', verifyTechToken, techController.getMyProjects);
+router.post('/orders', verifyTechToken, orderController.techCreateOrder);
+
+// The order's vendor: the FT sets it the same way the panel does (shared handlers).
+router.get('/vendors', verifyTechToken, techController.listVendors);
+router.post('/orders/:orderId/vendor', verifyTechToken, techController.requireTechOrder, adminOrders.createOrderVendor);
+router.put('/orders/:orderId/vendor', verifyTechToken, techController.requireTechOrder, adminOrders.updateOrderVendor);
+router.delete('/orders/:orderId/vendor/:orderVendorId', verifyTechToken, techController.requireTechOrder, adminOrders.deleteOrderVendor);
 
 // Orders
 router.get('/orders', verifyTechToken, orderController.techListOrders);

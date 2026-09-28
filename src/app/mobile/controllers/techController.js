@@ -1,4 +1,6 @@
 import db from '../../../config/database.js';
+import { productsForProject } from './clientController.js';
+import { techOrderScope } from '../../../helper/techAccess.js';
 import logger from '../../../helper/logger.js';
 import {
   registerDeviceToken,
@@ -140,4 +142,61 @@ export async function markNotificationRead(req, res) {
     logger.error('markNotificationRead error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
   }
+}
+
+/**
+ * GET /tech/projects — the projects this FT is on, with their products, so the
+ * field app can book an order (2026-09-28).
+ */
+export async function getMyProjects(req, res) {
+  try {
+    const projects = await db.project.findMany({
+      where: { isDeleted: false, status: 'ACTIVE', technicians: { some: { userId: Number(req.user.data.id) } } },
+      select: {
+        id: true, projectId: true, projectName: true, siteName: true, projectLocation: true, address: true,
+        client: { select: { clientId: true, companyName: true } },
+      },
+      orderBy: { projectName: 'asc' },
+    });
+    const data = await Promise.all(projects.map(async ({ id, ...p }) => ({ ...p, products: await productsForProject(id) })));
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.error('getMyProjects error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/** GET /tech/vendors — vendors with their plants and handlers, for the order's vendor picker. */
+export async function listVendors(req, res) {
+  try {
+    const data = await db.vendor.findMany({
+      where: { isDeleted: false },
+      select: {
+        id: true, companyName: true,
+        locations: {
+          where: { isDeleted: false },
+          select: { id: true, plantName: true, address: true, handlers: { where: { isDeleted: false }, select: { id: true, name: true, phone: true } } },
+        },
+      },
+      orderBy: { companyName: 'asc' },
+    });
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    logger.error('tech listVendors error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/**
+ * Guard for the shared order-vendor handlers: the order must be one this FT
+ * works (project or contact person). Puts orderId in the body where they read it.
+ */
+export async function requireTechOrder(req, res, next) {
+  const order = await db.order.findFirst({
+    where: { orderId: req.params.orderId, isDeleted: false, ...techOrderScope(req.user.data.id) },
+    select: { id: true },
+  });
+  if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
+  req.body = { ...req.body, orderId: req.params.orderId };
+  return next();
 }

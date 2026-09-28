@@ -11,15 +11,9 @@ import { getCreditPosition, getCreditBand } from '../../../helper/creditPosition
 import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow.js';
 import { orderProjectScope, projectScope, isClientOwner } from '../../../helper/clientAccess.js';
 import { ACTIVE_STATUSES, PAST_STATUSES, FIELD_STATUSES, isActiveStatus, orderStatusBlocked } from '../../../helper/orderStatus.js';
+import { techOrderScope, orderTechUserIds, notifyProjectTechsOfNewOrder } from '../../../helper/techAccess.js';
 
-/** userIds of the techs assigned to an order — the WS emit target list. */
-async function assignedTechUserIds(orderDbId) {
-  const rows = await db.orderTechnician.findMany({
-    where: { orderId: orderDbId, isDeleted: false },
-    select: { userId: true },
-  });
-  return rows.map((r) => r.userId);
-}
+const assignedTechUserIds = orderTechUserIds;
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -75,9 +69,7 @@ function buildOrderSelect() {
  * Orders this technician is assigned to. Replaces the old `assignedToId: userId`
  * filter now that an order can carry several technicians.
  */
-function assignedToTech(userId) {
-  return { technicians: { some: { userId, isDeleted: false } } };
-}
+const assignedToTech = techOrderScope;
 
 /**
  * The order, only if the caller may see it: a client's own order, or an order
@@ -260,9 +252,62 @@ export async function clientCreateOrder(req, res) {
     if (clientDbId === DEV_CLIENT_ID) {
       return res.status(201).json({ success: true, message: 'Order created successfully', data: { orderId: 'ORD-DEV-0001', id: 'dev-order' } });
     }
-    const { projectId, productName, productGrade, quantity, date, time, deliveryAddress } = req.body;
+    // The project must be this client's, and one this contact may order for (Q3).
+    const project = req.body.projectId && await db.project.findFirst({
+      where: { projectId: req.body.projectId, clientId: clientDbId, isDeleted: false, status: 'ACTIVE', ...projectScope(req.clientAccess) },
+    });
+    const placer = req.clientAccess.contact;
+    return await placeOrder(req, res, project, {
+      placedByContactId: placer?.id ?? null,
+      by: placer ? `${placer.name} (${placer.role.name})` : 'Client',
+      log: {
+        title: 'Order placed (client app)',
+        description: `placed by ${placer ? `${placer.name} (${placer.role.name}, ${placer.phone})` : 'the client'}`,
+        actorType: placer ? 'CLIENT_CONTACT' : 'CLIENT',
+        actorId: placer?.id ?? clientDbId,
+        source: 'CLIENT_APP',
+      },
+    });
+  } catch (error) {
+    logger.error('clientCreateOrder error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
 
-    if (!projectId || !productName || !productGrade || !quantity) {
+/** POST /tech/orders — an FT on the project books an order for it (2026-09-28). */
+export async function techCreateOrder(req, res) {
+  try {
+    const userId = Number(req.user.data.id);
+    const project = req.body.projectId && await db.project.findFirst({
+      where: { projectId: req.body.projectId, isDeleted: false, status: 'ACTIVE', technicians: { some: { userId } } },
+    });
+    const name = req.user.data.name || 'A field technician';
+    return await placeOrder(req, res, project, {
+      placedByContactId: null,
+      by: `${name} (field technician)`,
+      exceptTechUserId: userId,
+      log: {
+        title: 'Order placed (field app)',
+        description: `placed by ${name} (field technician)`,
+        actorType: 'FIELD_TECH',
+        actorId: String(userId),
+        source: 'FIELD_APP',
+      },
+    });
+  } catch (error) {
+    logger.error('techCreateOrder error:', error);
+    return res.status(500).json({ success: false, message: 'Internal Server Error' });
+  }
+}
+
+/**
+ * The booking both apps share: validate, number, freeze rate, check credit
+ * (warns only), save, log, then tell the admins, the client and the project's FTs.
+ */
+async function placeOrder(req, res, project, { placedByContactId, by, log, exceptTechUserId = null }) {
+    const { productName, productGrade, quantity, date, time, deliveryAddress } = req.body;
+
+    if (!req.body.projectId || !productName || !productGrade || !quantity) {
       return res.status(400).json({ success: false, message: 'projectId, productName, productGrade and quantity are required' });
     }
 
@@ -273,14 +318,10 @@ export async function clientCreateOrder(req, res) {
       return res.status(400).json({ success: false, message: dateCheck.message });
     }
 
-    // Verify project belongs to this client — and is one this contact may order for (Q3).
-    const project = await db.project.findFirst({
-      where: { projectId, clientId: clientDbId, isDeleted: false, status: 'ACTIVE', ...projectScope(req.clientAccess) },
-    });
-
     if (!project) {
       return res.status(404).json({ success: false, message: 'Project not found' });
     }
+    const clientDbId = project.clientId;
 
     const lineError = quantityError(quantity) || (await priceListError(project.id, productName, productGrade));
     if (lineError) {
@@ -314,57 +355,45 @@ export async function clientCreateOrder(req, res) {
         productGrade,
         quantity,
         ...snap,
-        creditHold: gate.hold,
-        creditHoldReason: gate.reason,
         date: date || null,
         time: time || null,
         deliveryAddress: deliveryAddress || null,
         status: 'NEW',
-        placedByContactId: req.clientAccess.contact?.id ?? null,
+        placedByContactId,
       },
     });
 
-    const placer = req.clientAccess.contact;
     await createActivityLog({
-      title: 'Order placed (client app)',
-      description: `${orderId} placed by ${placer ? `${placer.name} (${placer.role.name}, ${placer.phone})` : 'the client'}`,
+      ...log,
+      description: `${orderId} ${log.description}`,
       entityType: 'ORDER',
       entityId: order.id,
       action: 'CREATED',
       event: 'ORDER_PLACED',
-      actorType: placer ? 'CLIENT_CONTACT' : 'CLIENT',
-      actorId: placer?.id ?? clientDbId,
-      source: 'CLIENT_APP',
       orderRef: orderId,
     });
-
-    if (gate.hold) {
-      await notifyAdmins({
-        title: 'Order on credit hold',
-        message: `${orderId} is on credit hold — ${gate.reason}. Release or cancel it.`,
-        type: 'CREDIT_HOLD',
-        relatedId: order.id,
-        orderId: order.id,
-      });
-      await sendNotification({
-        targetType: 'CLIENT',
-        targetId: clientDbId,
-        title: 'Order awaiting credit approval',
-        message: `Your order ${orderId} is waiting for credit approval from the office.`,
-        type: 'CREDIT_HOLD',
-        relatedId: order.id,
-        orderId: order.id,
-      });
-    }
 
     // Notify the admin panel's bell (live over the WebSocket).
     await notifyAdmins({
       title: 'New Order Created',
-      message: `${placer ? `${placer.name} (${placer.role.name})` : 'Client'} placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
+      message: `${by} placed a new order ${orderId} for ${productName} ${productGrade} (${quantity})`,
       type: 'ORDER_CREATED',
       relatedId: order.id,
       orderId: order.id,
     });
+
+    // Booked by the FT on the client's behalf: the client hears about it.
+    if (exceptTechUserId) {
+      await sendNotification({
+        targetType: 'CLIENT',
+        targetId: clientDbId,
+        title: 'New order placed',
+        message: `${by} placed order ${orderId} for ${productName} ${productGrade} (${quantity})`,
+        type: 'ORDER_CREATED',
+        relatedId: order.id,
+        orderId: order.id,
+      });
+    }
 
     // Live push so the client's other devices and the admin panel see it now.
     const created = await db.order.findFirst({
@@ -373,6 +402,7 @@ export async function clientCreateOrder(req, res) {
     });
     emitOrderEvent(order.orderId, 'order:new', formatOrder(created), {
       clientDbId,
+      techUserIds: await notifyProjectTechsOfNewOrder(created, { exceptUserId: exceptTechUserId }),
     });
 
     return res.status(201).json({
@@ -380,10 +410,6 @@ export async function clientCreateOrder(req, res) {
       message: 'Order created successfully',
       data: { orderId: order.orderId, id: order.id, creditHold: false, creditBand: gate.band },
     });
-  } catch (error) {
-    logger.error('clientCreateOrder error:', error);
-    return res.status(500).json({ success: false, message: 'Internal Server Error' });
-  }
 }
 
 // ─── Client: cancel before dispatch (D15, W6) ─────────────────────────────────
@@ -681,11 +707,8 @@ export async function addComment(req, res) {
     const notifyTargets =
       authorType === 'CLIENT'
         ? (
-            await db.orderTechnician.findMany({
-              where: { orderId: order.id, isDeleted: false },
-              select: { userId: true },
-            })
-          ).map((t) => ({ targetType: 'FIELD_TECH', targetId: String(t.userId) }))
+            await orderTechUserIds(order.id)
+          ).map((id) => ({ targetType: 'FIELD_TECH', targetId: String(id) }))
         : [{ targetType: 'CLIENT', targetId: order.clientId }];
 
     await Promise.all(
