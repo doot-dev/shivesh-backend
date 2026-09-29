@@ -34,6 +34,13 @@ const actorFor = (req) => (isClient(req)
   ? { createdById: null, actorType: 'CLIENT_CONTACT', actorId: req.clientAccess?.contact?.id ?? req.user.data.id, source: 'CLIENT_APP' }
   : { createdById: Number(req.user.data.id) });
 
+/** The first truck at site (reached, or poured with its challan) moves the order to REACHED; also clears DELAYED. */
+async function orderReachedByTruck(order) {
+  if (['CONFIRMED', 'DELAYED', 'DISPATCHED'].includes(order.status)) {
+    await db.order.update({ where: { id: order.id }, data: { status: 'REACHED' } });
+  }
+}
+
 export async function createTm(req, res) {
   try {
     const { orderId } = req.params;
@@ -84,6 +91,7 @@ export async function createTm(req, res) {
         ...((uploadedChallanUrl || challanUrl) && { deliveredAt: new Date() }),
       },
     });
+    if (tm.status === 'DELIVERED') await orderReachedByTruck(order);
 
     await createActivityLog({
       title: isClient(req) ? 'TM added (client app)' : 'TM added (field app)',
@@ -183,6 +191,7 @@ export async function updateTm(req, res) {
         ...(uploadedChallanUrl && !tm.deliveredAt && { deliveredAt: new Date() }),
       },
     });
+    if (['REACHED', 'DELIVERED'].includes(updated.status)) await orderReachedByTruck(order);
 
     await createActivityLog({
       title: 'TM updated (field app)',
@@ -278,10 +287,7 @@ export async function markTmReached(req, res) {
       where: { id: tmId },
       data: { status: 'REACHED', arrivalTime: tm.arrivalTime || arrivalTime },
     });
-    // The first truck at site moves the order to REACHED (also clears DELAYED).
-    if (['CONFIRMED', 'DELAYED', 'DISPATCHED'].includes(order.status)) {
-      await db.order.update({ where: { id: order.id }, data: { status: 'REACHED' } });
-    }
+    await orderReachedByTruck(order);
 
     await createActivityLog({
       title: 'TM reached site',
