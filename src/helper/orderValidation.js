@@ -22,3 +22,7 @@ export async function priceListError(projectDbId, productName, productGrade) {
   });
   return priced ? null : `${productName} ${productGrade} is not in this project's price list`;
 }
+
+/** An order's default delivery address: the project's address, else its site and location. */
+export const siteAddress = (project) =>
+  project.address?.trim() || [project.siteName, project.projectLocation].filter((s) => s?.trim()).join(', ') || null;

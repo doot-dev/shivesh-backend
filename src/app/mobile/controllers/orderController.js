@@ -5,7 +5,7 @@ import { emitOrderEvent } from '../../../realtime/socketServer.js';
 import { validateDeliveryDate } from '../../../helper/deliveryDateHelper.js';
 import { createActivityLog } from '../../../helper/activityLogger.js';
 import { onOrderCompleted } from '../../../helper/orderCompletion.js';
-import { quantityError, priceListError } from '../../../helper/orderValidation.js';
+import { quantityError, priceListError, siteAddress } from '../../../helper/orderValidation.js';
 import { bookingSnapshot, creditGate } from '../../../helper/orderBooking.js';
 import { getCreditPosition, getCreditBand } from '../../../helper/creditPosition.js';
 import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow.js';
@@ -44,7 +44,8 @@ function buildOrderSelect() {
       select: {
         id: true,
         vendor: { select: { id: true, companyName: true } },
-        vendorLocation: { select: { id: true, plantName: true, address: true } },
+        // Every handler at the plant, so the FT can call whoever picks up.
+        vendorLocation: { select: { id: true, plantName: true, address: true, handlers: { where: { isDeleted: false }, orderBy: { id: 'asc' }, select: { id: true, name: true, phone: true } } } },
         vendorHandler: { select: { id: true, name: true, phone: true } },
       },
     },
@@ -224,6 +225,16 @@ export async function clientGetOrder(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
+    // No contact person set on the order yet: the project's field technicians
+    // are who the site calls, so show them (same shape as order technicians).
+    if (!order.technicians.length) {
+      order.technicians = await db.projectTechnician.findMany({
+        where: { project: { orders: { some: { orderId } } }, user: { isDeleted: false, status: true } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true, user: { select: { id: true, name: true, employeeId: true, phone: true } } },
+      });
+    }
+
     // Everyone sees the band; only the Owner sees amounts and what this order
     // does to them once delivered (e.g. ₹8,00,000 → ₹7,40,000).
     const pos = await getCreditPosition(clientDbId);
@@ -360,7 +371,8 @@ async function placeOrder(req, res, project, { placedByContactId, by, log, excep
         ...snap,
         date: date || null,
         time: time || null,
-        deliveryAddress: deliveryAddress || null,
+        // Blank = the project's site address, so the order page and invoice always have one.
+        deliveryAddress: deliveryAddress || siteAddress(project),
         status: 'NEW',
         placedByContactId,
       },

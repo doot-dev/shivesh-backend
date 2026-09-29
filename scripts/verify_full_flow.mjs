@@ -53,6 +53,9 @@ const created = ok(await call(pm, 'POST', '/admin/orders', { projectId: PROJECT,
 const O = created.orderId ?? created.order?.orderId;
 assert.ok(O, 'order id');
 console.log(`  → ${O} (${prod.productName} ${prod.productGrade})`);
+const fresh = (await call(owner, 'GET', `/mobile/client/orders/${O}`)).d;
+assert.ok(fresh.deliveryAddress, 'delivery address defaults to the project site'); console.log(`  ✓ delivery address: ${fresh.deliveryAddress}`);
+assert.ok(fresh.technicians?.some((t) => t.user?.phone), 'client sees the project FT as contact'); console.log(`  ✓ client sees FT ${fresh.technicians.map((t) => `${t.user.name} ${t.user.phone}`).join(', ')}`);
 
 const ftList = ok(await call(ft, 'GET', '/mobile/tech/orders?type=active&limit=200'), 'FT order list');
 assert.ok((ftList.orders ?? ftList).some((o) => o.orderId === O), 'new order in FT list');

@@ -19,7 +19,7 @@ import { orderStatusBlocked, isActiveStatus, PAST_STATUSES } from "../../../help
 /** "DISPATCHED" → "Dispatched" for messages people read. */
 const statusLabel = (s) => s.charAt(0) + s.slice(1).toLowerCase();
 import { rejectIfLocked, orderEditableUntil } from "../../../helper/updateWindow.js";
-import { quantityError, priceListError } from "../../../helper/orderValidation.js";
+import { quantityError, priceListError, siteAddress } from "../../../helper/orderValidation.js";
 import { bookingSnapshot, creditGate } from "../../../helper/orderBooking.js";
 import { emitOrderEvent } from "../../../realtime/socketServer.js";
 import { validateDeliveryDate } from "../../../helper/deliveryDateHelper.js";
@@ -465,7 +465,8 @@ export async function createOrder(req, res) {
         ...snap,
         creditHold: gate.hold,
         creditHoldReason: gate.reason,
-        deliveryAddress: deliveryAddress || null,
+        // Blank = the project's site address, so the order page and invoice always have one.
+        deliveryAddress: deliveryAddress || siteAddress(project),
         date: date || null,
         time: time || null,
         status: "NEW",
