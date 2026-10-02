@@ -12,6 +12,7 @@ import { rejectIfLocked, orderEditableUntil } from '../../../helper/updateWindow
 import { orderProjectScope, projectScope, isClientOwner } from '../../../helper/clientAccess.js';
 import { ACTIVE_STATUSES, PAST_STATUSES, FIELD_STATUSES, isActiveStatus, orderStatusBlocked } from '../../../helper/orderStatus.js';
 import { techOrderScope, orderTechUserIds, notifyProjectTechsOfNewOrder } from '../../../helper/techAccess.js';
+import { resolveUserAccess, hasPermission } from '../../../helper/accessControl.js';
 import { addExtra, extrasSelect } from '../../../helper/orderExtras.js';
 
 const assignedTechUserIds = orderTechUserIds;
@@ -36,6 +37,8 @@ function buildOrderSelect() {
     time: true,
     status: true,
     createdAt: true,
+    createdByType: true,
+    createdByName: true,
     project: { select: { projectId: true, projectName: true, siteName: true, projectLocation: true } },
     client: { select: { clientId: true, companyName: true, contactNumber: true } },
     vendors: {
@@ -273,6 +276,7 @@ export async function clientCreateOrder(req, res) {
     const placer = req.clientAccess.contact;
     return await placeOrder(req, res, project, {
       placedByContactId: placer?.id ?? null,
+      createdBy: { type: placer ? 'CLIENT_CONTACT' : 'CLIENT', name: placer?.name ?? null },
       by: placer ? `${placer.name} (${placer.role.name})` : 'Client',
       log: {
         title: 'Order placed (client app)',
@@ -292,12 +296,17 @@ export async function clientCreateOrder(req, res) {
 export async function techCreateOrder(req, res) {
   try {
     const userId = Number(req.user.data.id);
+    // Booking from the field app is off until an admin grants it (2026-10-02).
+    if (!hasPermission(await resolveUserAccess(userId), 'fieldOrders.create')) {
+      return res.status(403).json({ success: false, code: 'ROLE_FORBIDDEN', message: 'You do not have access to place orders. Ask the office.' });
+    }
     const project = req.body.projectId && await db.project.findFirst({
       where: { projectId: req.body.projectId, isDeleted: false, status: 'ACTIVE', technicians: { some: { userId } } },
     });
     const name = req.user.data.name || 'A field technician';
     return await placeOrder(req, res, project, {
       placedByContactId: null,
+      createdBy: { type: 'FIELD_TECH', name: req.user.data.name || null },
       by: `${name} (field technician)`,
       exceptTechUserId: userId,
       log: {
@@ -318,7 +327,7 @@ export async function techCreateOrder(req, res) {
  * The booking both apps share: validate, number, freeze rate, check credit
  * (warns only), save, log, then tell the admins, the client and the project's FTs.
  */
-async function placeOrder(req, res, project, { placedByContactId, by, log, exceptTechUserId = null }) {
+async function placeOrder(req, res, project, { placedByContactId, createdBy, by, log, exceptTechUserId = null }) {
     const { productName, productGrade, quantity, date, time, deliveryAddress } = req.body;
 
     if (!req.body.projectId || !productName || !productGrade || !quantity) {
@@ -375,6 +384,8 @@ async function placeOrder(req, res, project, { placedByContactId, by, log, excep
         deliveryAddress: deliveryAddress || siteAddress(project),
         status: 'NEW',
         placedByContactId,
+        createdByType: createdBy.type,
+        createdByName: createdBy.name,
       },
     });
 
@@ -555,7 +566,7 @@ export async function techGetOrder(req, res) {
 
     const { clientId: clientDbId, ...order } = await db.order.findFirst({
       where: { orderId, ...assignedToTech(userId), isDeleted: false },
-      select: { ...buildOrderSelect(), clientId: true },
+      select: { ...buildOrderSelect(), clientId: true, project: { select: { projectId: true, projectName: true, siteName: true, projectLocation: true, maxQty: true } } },
     }) ?? {};
 
     if (!order.orderId) {

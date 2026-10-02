@@ -6,6 +6,7 @@ export const createProjectValidation = {
   projectLocation: "required|string",
   latitude: "numeric",
   longitude: "numeric",
+  maxQty: "numeric|min:0",
 };
 
 export const updateProjectValidation = {
@@ -17,19 +18,13 @@ export const updateProjectValidation = {
   latitude: "numeric",
   longitude: "numeric",
   status: "in:ACTIVE,INACTIVE,COMPLETED,ON_HOLD,CANCELLED",
+  maxQty: "numeric|min:0",
 };
 
 export const updateProjectCreditValidation = {
   projectId: "required|string",
   creditAmount: "numeric|min:0|sometimes",
   creditResetPeriodDays: "integer|min:1|sometimes",
-};
-
-export const updateProjectCommissionValidation = {
-  projectId: "required|string",
-  commissionPersonName: "string|sometimes",
-  commissionAmountPerM3: "sometimes|numeric|min:0",
-  commissionPersonMobile: "string|sometimes",
 };
 
 // Project Product Validations

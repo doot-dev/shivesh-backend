@@ -1,5 +1,6 @@
 import db from '../config/database.js';
 import { billBlocker, keptQty } from './orderCompletion.js';
+import { commissionRegister } from './commissions.js';
 
 /**
  * Data for the CA Pack registers (R1, R2, R3, R5, R6, R7, R13). Each builder
@@ -234,4 +235,5 @@ export const REGISTERS = {
   exceptions: () => exceptions(),
   audit: auditTrail,
   orders: orderRegister,
+  commissions: commissionRegister,
 };

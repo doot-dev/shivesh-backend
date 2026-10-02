@@ -62,7 +62,7 @@ try {
   await expect(viewer, [
     ['GET', `/project/${P}`, 200], ['GET', `/project/${P}/product/list`, 200],
     ['POST', '/project/product/create', 403], ['PUT', '/project/product', 403], ['PUT', `/project/${P}/technicians`, 403],
-    ['PUT', '/project/commission', 403], ['PUT', '/project', 403],
+    ['POST', '/project/PRJ-2026-0010/commissions', 403], ['PUT', '/project', 403],
   ]);
   const gauge = (await call(viewer, 'GET', `/reports/clients/${C}/credit`)).body.data;
   assert.deepEqual(Object.keys(gauge).sort(), ['band', 'position', 'usedPct'], 'creditScore.view alone: gauge, no amounts');

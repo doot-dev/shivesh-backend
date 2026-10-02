@@ -6,7 +6,6 @@ import {
   updateProject,
   deleteProject,
   updateProjectCredit,
-  updateProjectCommission,
   createProjectProduct,
   getProjectProducts,
   getProjectProductDetails,
@@ -18,6 +17,14 @@ import {
   deleteProjectProductVendor,
   setProjectTechnicians,
 } from "../controllers/projectController.js";
+import {
+  getProjectCommissions,
+  addCommissionPerson,
+  updateCommissionPerson,
+  removeCommissionPerson,
+  addCommissionPayout,
+  removeCommissionPayout,
+} from "../controllers/commissionController.js";
 import { verifyToken } from "../../../config/jwtConfig.js";
 import { requirePermission, can } from "../../../helper/accessControl.js";
 
@@ -46,7 +53,13 @@ router.post("/create", verifyToken, requirePermission(can('projects', 'create'))
 router.get("/:projectId", verifyToken, requirePermission(can('projects', 'view'), can('orders', 'view')), getProjectDetails);
 router.put("/", verifyToken, requirePermission(can('projects', 'update')), updateProject);
 router.put("/credit", verifyToken, requirePermission(can('projects', 'update')), updateProjectCredit);
-router.put("/commission", verifyToken, requirePermission(can('projectCommission', 'update')), updateProjectCommission);
+// Commission people (many per project), their earnings and payouts (2026-10-02).
+router.get("/:projectId/commissions", verifyToken, requirePermission(can('projectCommission', 'view')), getProjectCommissions);
+router.post("/:projectId/commissions", verifyToken, requirePermission(can('projectCommission', 'update')), addCommissionPerson);
+router.put("/commissions/:id", verifyToken, requirePermission(can('projectCommission', 'update')), updateCommissionPerson);
+router.delete("/commissions/:id", verifyToken, requirePermission(can('projectCommission', 'update')), removeCommissionPerson);
+router.post("/commissions/:id/payouts", verifyToken, requirePermission(can('projectCommission', 'update')), addCommissionPayout);
+router.delete("/commissions/payouts/:payoutId", verifyToken, requirePermission(can('projectCommission', 'update')), removeCommissionPayout);
 router.delete("/:projectId", verifyToken, requirePermission(can('projects', 'delete')), deleteProject);
 
 

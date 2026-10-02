@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as reportController from '../controllers/reportController.js';
+import { getCommissionReport } from '../controllers/commissionController.js';
 import { verifyToken } from '../../../config/jwtConfig.js';
 import { requirePermission, can } from '../../../helper/accessControl.js';
 
@@ -18,6 +19,7 @@ router.get(
 // Phase 1B — Excel CA Pack (reports.export), analytics and credit (reports.view).
 router.get('/export/:register', verifyToken, requirePermission(can('reports', 'export')), reportController.exportRegister);
 router.get('/ca-pack', verifyToken, requirePermission(can('reports', 'export')), reportController.exportCaPack);
+router.get('/commissions', verifyToken, requirePermission(can('reports', 'view')), requirePermission(can('projectCommission', 'view')), getCommissionReport);
 router.get('/analytics', verifyToken, requirePermission(can('reports', 'view')), reportController.portfolioAnalytics);
 router.get('/clients/:clientId/analytics', verifyToken, requirePermission(can('reports', 'view')), reportController.clientAnalytics);
 // Credit is needed while booking an order, so orders.create may read it too.

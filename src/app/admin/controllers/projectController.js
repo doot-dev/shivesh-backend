@@ -5,7 +5,6 @@ import {
   createProjectValidation,
   updateProjectValidation,
   updateProjectCreditValidation,
-  updateProjectCommissionValidation,
   createProjectProductValidation,
   updateProjectProductValidation,
   createProjectProductVendorValidation,
@@ -135,6 +134,8 @@ export const createProject = async (req, res) => {
         // PO rates for extra services (2026-09-29)
         ...(req.body.pumpingRate !== undefined && { pumpingRate: req.body.pumpingRate === '' || req.body.pumpingRate === null ? null : Number(req.body.pumpingRate) }),
         ...(req.body.partLoadRate !== undefined && { partLoadRate: req.body.partLoadRate === '' || req.body.partLoadRate === null ? null : Number(req.body.partLoadRate) }),
+        // Agreed project volume in CBM, display only (2026-10-02).
+        ...(req.body.maxQty !== undefined && { maxQty: req.body.maxQty === '' || req.body.maxQty === null ? null : Number(req.body.maxQty) }),
         projectId,
         projectName,
         clientId: client.id,
@@ -304,6 +305,8 @@ export const updateProject = async (req, res) => {
         // PO rates for extra services (2026-09-29)
         ...(req.body.pumpingRate !== undefined && { pumpingRate: req.body.pumpingRate === '' || req.body.pumpingRate === null ? null : Number(req.body.pumpingRate) }),
         ...(req.body.partLoadRate !== undefined && { partLoadRate: req.body.partLoadRate === '' || req.body.partLoadRate === null ? null : Number(req.body.partLoadRate) }),
+        // Agreed project volume in CBM, display only (2026-10-02).
+        ...(req.body.maxQty !== undefined && { maxQty: req.body.maxQty === '' || req.body.maxQty === null ? null : Number(req.body.maxQty) }),
         ...(projectName && { projectName }),
         ...(siteName && { siteName }),
         ...(address !== undefined && { address }),
@@ -487,104 +490,6 @@ export const updateProjectCredit = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to update project credit",
-      error: error.message,
-    });
-  }
-};
-
-/**
- * Update project commission details
- * @param {Object} req.body - Request body containing updated commission details
- * @param {Response} res - Response object
- * @returns {Promise<Response>} - Promise resolving to a Response object
- */
-export const updateProjectCommission = async (req, res) => {
-  try {
-    const { err, status: validationStatus } = await validatorFunction(req.body, updateProjectCommissionValidation);
-
-    if (!validationStatus) {
-      return res.status(422).json({
-        success: false,
-        message: "Validation failed",
-        errors: err
-      });
-    }
-
-    const { commissionPersonName, commissionAmountPerM3, commissionPersonMobile, projectId } = req.body;
-
-    logger.info(`Updating commission for project: ${projectId}`);
-
-    // Check if project exists
-    const existingProject = await db.project.findFirst({
-      where: {
-        projectId,
-        isDeleted: false,
-      },
-    });
-
-    if (!existingProject) {
-      return res.status(404).json({
-        success: false,
-        message: "Project not found",
-      });
-    }
-
-    // Update project commission
-    const updatedProject = await db.project.update({
-      where: { id: existingProject.id },
-      data: {
-        /**
-         * Commission person name
-         * @type {string|null}
-         */
-        commissionPersonName: commissionPersonName !== undefined ? (commissionPersonName || null) : existingProject.commissionPersonName,
-        /**
-         * Commission amount per cubic meter
-         * @type {number|null}
-         */
-        commissionAmountPerM3: commissionAmountPerM3 !== undefined ? (commissionAmountPerM3 ? parseFloat(commissionAmountPerM3) : null) : existingProject.commissionAmountPerM3,
-        /**
-         * Commission person mobile number
-         * @type {string|null}
-         */
-        commissionPersonMobile: commissionPersonMobile !== undefined ? (commissionPersonMobile || null) : existingProject.commissionPersonMobile,
-      },
-      include: {
-        client: {
-          select: {
-            id: true,
-            clientId: true,
-            companyName: true,
-            ownerName: true,
-          },
-        },
-      },
-    });
-
-    logger.info(`token user ${JSON.stringify(req.user)}`);
-
-    // Log activity
-    await createActivityLog({
-      title: "Project commission updated",
-      description: `Commission details updated for project ${existingProject.projectName} (${projectId})`,
-      entityType: "PROJECT",
-      entityId: existingProject.id,
-      action: "UPDATED",
-      createdById: Number(req.user?.data?.userId) || null,
-    });
-
-    logger.info(`Project commission updated successfully: ${projectId}`);
-
-    return res.json({
-      success: true,
-      message: "Project commission updated successfully",
-      data: updatedProject,
-    });
-  } catch (error) {
-    logger.error("Error updating project commission:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update project commission",
       error: error.message,
     });
   }

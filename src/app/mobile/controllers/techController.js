@@ -1,6 +1,7 @@
 import db from '../../../config/database.js';
 import { productsForProject } from './clientController.js';
 import { techOrderScope } from '../../../helper/techAccess.js';
+import { resolveUserAccess, hasPermission } from '../../../helper/accessControl.js';
 import logger from '../../../helper/logger.js';
 import {
   registerDeviceToken,
@@ -88,7 +89,9 @@ export async function getProfile(req, res) {
       return res.status(404).json({ success: false, message: 'Profile not found' });
     }
 
-    return res.status(200).json({ success: true, data: user });
+    // The app shows "New order" only when the office has granted it.
+    const canPlaceOrders = hasPermission(await resolveUserAccess(userId), 'fieldOrders.create');
+    return res.status(200).json({ success: true, data: { ...user, canPlaceOrders } });
   } catch (error) {
     logger.error('getTechProfile error:', error);
     return res.status(500).json({ success: false, message: 'Internal Server Error' });
@@ -153,7 +156,7 @@ export async function getMyProjects(req, res) {
     const projects = await db.project.findMany({
       where: { isDeleted: false, status: 'ACTIVE', technicians: { some: { userId: Number(req.user.data.id) } } },
       select: {
-        id: true, projectId: true, projectName: true, siteName: true, projectLocation: true, address: true,
+        id: true, projectId: true, projectName: true, siteName: true, projectLocation: true, address: true, maxQty: true,
         client: { select: { clientId: true, companyName: true } },
       },
       orderBy: { projectName: 'asc' },

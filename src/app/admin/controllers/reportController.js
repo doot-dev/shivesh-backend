@@ -378,6 +378,9 @@ export async function exportRegister(req, res) {
   try {
     const build = REGISTERS[req.params.register];
     if (!build) return res.status(404).json({ success: false, message: `Unknown register. Use one of: ${Object.keys(REGISTERS).join(', ')}` });
+    if (req.params.register === 'commissions' && !hasPermission(req.access, 'projectCommission.view')) {
+      return res.status(403).json({ success: false, message: 'You do not have access to commission figures' });
+    }
     const range = parseRange(req.query);
     const sheet = await build(range.from, range.to);
     const wb = newWorkbook();

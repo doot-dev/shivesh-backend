@@ -172,6 +172,14 @@ export const MODULES = [
     actions: [...CRUD, ACTIONS.APPROVE],
   },
   {
+    key: 'fieldOrders',
+    parent: 'orders',
+    label: 'Order · Place from field app',
+    path: null,
+    description: 'Lets a field technician book orders for their projects in the field app.',
+    actions: [ACTIONS.CREATE],
+  },
+  {
     key: 'orderExtras',
     parent: 'orders',
     label: 'Order · Extra services',

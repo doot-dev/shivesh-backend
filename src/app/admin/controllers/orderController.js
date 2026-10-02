@@ -470,6 +470,8 @@ export async function createOrder(req, res) {
         date: date || null,
         time: time || null,
         status: "NEW",
+        createdByType: "USER",
+        createdByName: req.access?.user?.name || req.user?.data?.userName || null,
         ...(vendorRows.length && { vendors: { create: vendorRows } }),
         ...(technicianIds.length && {
           technicians: { create: technicianIds.map((userId) => ({ userId })) },

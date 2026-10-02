@@ -38,6 +38,7 @@ model User {
   projectAssignments  ProjectTechnician[]
   leadMessages        LeadMessage[]       @relation("LeadMessageAuthor")
   orderExtrasAdded    OrderExtra[]        @relation("OrderExtraAddedBy")
+  commissionPayouts   CommissionPayout[]  @relation("CommissionPayoutBy")
   roleRef             Role?               @relation("UserRoleRef", fields: [roleId], references: [id])
   permissionOverrides UserPermission[]    @relation("UserPermissionOverrides")
 
@@ -486,6 +487,9 @@ model Project {
   /// PO rates for extra services (2026-09-29), prefilled when one is added to an order.
   pumpingRate            Float?
   partLoadRate           Float?
+  /// Agreed project volume in CBM (2026-10-02). Display only, never checked against orders.
+  maxQty                 Float?
+  commissions            ProjectCommission[]
 
   @@index([clientId])
 }
@@ -581,6 +585,9 @@ model Order {
   /// Who placed it from the client app. Null for office-placed orders.
   placedByContactId  String?
   placedBy           ClientContact?    @relation(fields: [placedByContactId], references: [id])
+  /// Who booked it (2026-10-02): USER | FIELD_TECH | CLIENT_CONTACT, and their name at the time.
+  createdByType      String?           @db.VarChar(20)
+  createdByName      String?
 
   @@index([projectId])
   @@index([clientId])
@@ -926,4 +933,39 @@ model OrderExtra {
   addedBy      User      @relation("OrderExtraAddedBy", fields: [addedById], references: [id])
 
   @@index([orderId])
+}
+
+/// A commission person on a project (2026-10-02). Several per project, each
+/// with their own rate. Earned = billed qty of the project's bills x ratePerM3.
+model ProjectCommission {
+  id        String             @id @default(cuid())
+  projectId String
+  name      String
+  mobile    String?
+  ratePerM3 Float
+  isDeleted Boolean            @default(false)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  payouts   CommissionPayout[]
+
+  @@index([projectId])
+}
+
+/// Money paid out to a commission person. Removal is soft.
+model CommissionPayout {
+  id           String            @id @default(cuid())
+  commissionId String
+  amount       Float
+  paidOn       DateTime          @db.Date
+  mode         String?           @db.VarChar(30)
+  reference    String?
+  note         String?           @db.Text
+  createdById  Int?
+  isDeleted    Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  commission   ProjectCommission @relation(fields: [commissionId], references: [id], onDelete: Cascade)
+  createdBy    User?             @relation("CommissionPayoutBy", fields: [createdById], references: [id])
+
+  @@index([commissionId])
 }
